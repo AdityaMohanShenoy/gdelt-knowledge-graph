@@ -35,17 +35,17 @@ DATA_FILE = _best_data()
 
 # ── Lookups ─────────────────────────────────────────────────────────────────
 FIPS_NAME = {
-    "US": "United States", "IS": "Israel",   "UP": "Palestine",
+    "US": "United States", "IS": "Israel",   "UP": "Ukraine",
     "RS": "Russia",        "IN": "India",    "UK": "United Kingdom",
-    "PK": "Pakistan",      "NI": "Nicaragua","DJ": "Djibouti", "AS": "Australia",
+    "PK": "Pakistan",      "NI": "Nigeria",  "DJ": "Djibouti", "AS": "Australia",
 }
 FIPS_FLAG = {
-    "US": "🇺🇸", "IS": "🇮🇱", "UP": "🇵🇸", "RS": "🇷🇺", "IN": "🇮🇳",
-    "UK": "🇬🇧", "PK": "🇵🇰", "NI": "🇳🇮", "DJ": "🇩🇯", "AS": "🇦🇺",
+    "US": "🇺🇸", "IS": "🇮🇱", "UP": "🇺🇦", "RS": "🇷🇺", "IN": "🇮🇳",
+    "UK": "🇬🇧", "PK": "🇵🇰", "NI": "🇳🇬", "DJ": "🇩🇯", "AS": "🇦🇺",
 }
 ISO_FIPS = {
-    "USA":"US","ISR":"IS","PSE":"UP","RUS":"RS","IND":"IN",
-    "GBR":"UK","PAK":"PK","NIC":"NI","DJI":"DJ","AUS":"AS",
+    "USA":"US","ISR":"IS","UKR":"UP","RUS":"RS","IND":"IN",
+    "GBR":"UK","PAK":"PK","NGA":"NI","DJI":"DJ","AUS":"AS",
 }
 TOP10 = list(FIPS_NAME.keys())
 TOP10_SQL = ",".join(f"'{c}'" for c in TOP10)

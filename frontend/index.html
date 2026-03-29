@@ -812,17 +812,23 @@ body::after {
 /* ══════════════════════════════════════════
    CONSTANTS & STATE
 ══════════════════════════════════════════ */
+/* FIPS-to-ISO2 for flag images (flagcdn.com) */
+const FIPS_ISO2 = {US:'us',IS:'il',UP:'ua',RS:'ru',IN:'in',UK:'gb',PK:'pk',NI:'ng',DJ:'dj',AS:'au'};
+function flagImg(fips, size=20) {
+  const iso = FIPS_ISO2[fips] || 'xx';
+  return `<img src="https://flagcdn.com/${size>16?'w40':'w20'}/${iso}.png" alt="${fips}" style="height:${size}px;vertical-align:middle;border-radius:2px;">`;
+}
 const COUNTRIES = {
-  US:{ name:'United States', flag:'🇺🇸' },
-  IS:{ name:'Israel',        flag:'🇮🇱' },
-  UP:{ name:'Palestine',     flag:'🇵🇸' },
-  RS:{ name:'Russia',        flag:'🇷🇺' },
-  IN:{ name:'India',         flag:'🇮🇳' },
-  UK:{ name:'United Kingdom',flag:'🇬🇧' },
-  PK:{ name:'Pakistan',      flag:'🇵🇰' },
-  NI:{ name:'Nicaragua',     flag:'🇳🇮' },
-  DJ:{ name:'Djibouti',      flag:'🇩🇯' },
-  AS:{ name:'Australia',     flag:'🇦🇺' },
+  US:{ name:'United States', flag:flagImg('US') },
+  IS:{ name:'Israel',        flag:flagImg('IS') },
+  UP:{ name:'Ukraine',       flag:flagImg('UP') },
+  RS:{ name:'Russia',        flag:flagImg('RS') },
+  IN:{ name:'India',         flag:flagImg('IN') },
+  UK:{ name:'United Kingdom',flag:flagImg('UK') },
+  PK:{ name:'Pakistan',      flag:flagImg('PK') },
+  NI:{ name:'Nigeria',       flag:flagImg('NI') },
+  DJ:{ name:'Djibouti',      flag:flagImg('DJ') },
+  AS:{ name:'Australia',     flag:flagImg('AS') },
 };
 
 const QUAD_COLORS = { '1':'#22d3ee','2':'#10b981','3':'#f97316','4':'#ef4444' };
@@ -1185,12 +1191,14 @@ function renderGraph(data) {
     })
     .attr('stroke-width', 1.8);
 
-  // Flag emoji inside
-  nodeGrp.append('text')
-    .attr('text-anchor','middle').attr('dominant-baseline','central')
-    .attr('font-size', n => Math.min(rScale(n.event_count) * .72, 26))
-    .attr('dy', -1)
-    .text(n => COUNTRIES[n.id]?.flag || '🌍');
+  // Flag image inside node
+  nodeGrp.append('image')
+    .attr('href', n => `https://flagcdn.com/w40/${FIPS_ISO2[n.id]||'xx'}.png`)
+    .attr('width', n => Math.min(rScale(n.event_count) * 1.1, 32))
+    .attr('height', n => Math.min(rScale(n.event_count) * 0.75, 22))
+    .attr('x', n => -Math.min(rScale(n.event_count) * 1.1, 32) / 2)
+    .attr('y', n => -Math.min(rScale(n.event_count) * 0.75, 22) / 2)
+    .attr('preserveAspectRatio', 'xMidYMid meet');
 
   // Country code below circle
   nodeGrp.append('text')
@@ -1306,8 +1314,8 @@ async function openEdgeDrawer(edge) {
   const body    = $('drawer-body');
   const src     = edge.source?.id || edge.source;
   const tgt     = edge.target?.id || edge.target;
-  const srcInfo = COUNTRIES[src] || { flag:'🌍', name: src };
-  const tgtInfo = COUNTRIES[tgt] || { flag:'🌍', name: tgt };
+  const srcInfo = COUNTRIES[src] || { flag:'', name: src };
+  const tgtInfo = COUNTRIES[tgt] || { flag:'', name: tgt };
   const qcol    = QUAD_COLORS[edge.dominant_quad] || '#888';
 
   // Header
@@ -1566,7 +1574,7 @@ function renderCountry(d) {
     card.style.setProperty('--border-color', borderColor);
     card.innerHTML = `
       <div class="card-header">
-        <div class="card-flag">${c.flag}</div>
+        <div class="card-flag">${flagImg(c.code, 28)}</div>
         <div class="card-info">
           <div class="card-name">${c.name}</div>
           <div class="card-code" style="font-family:var(--mono)">${c.code}</div>
@@ -1619,7 +1627,7 @@ function renderCountry(d) {
   // Populate timeline country select
   const sel = $('tl-country');
   sel.innerHTML = '<option value="">All Countries</option>' +
-    d.countries.map(c => `<option value="${c.code}">${c.flag} ${c.name}</option>`).join('');
+    d.countries.map(c => `<option value="${c.code}">${c.name}</option>`).join('');
 }
 
 /* ══════════════════════════════════════════
@@ -1692,7 +1700,7 @@ function renderEvents(d) {
 }
 
 function ISO_TO_FIPS(iso) {
-  const map = { USA:'US', ISR:'IS', PSE:'UP', RUS:'RS', IND:'IN', GBR:'UK', PAK:'PK', NIC:'NI', DJI:'DJ', AUS:'AS' };
+  const map = { USA:'US', ISR:'IS', UKR:'UP', RUS:'RS', IND:'IN', GBR:'UK', PAK:'PK', NGA:'NI', DJI:'DJ', AUS:'AS' };
   return map[iso] || iso;
 }
 
@@ -1784,7 +1792,7 @@ function renderHeatmap(d) {
     .attr('y', -10)
     .attr('text-anchor','middle')
     .attr('font-size', cellSize < 40 ? 11 : 14)
-    .text((code, i) => d.flags[i]);
+    .text((code, i) => d.names[i].split(' ')[0]);
 
   g.selectAll('.col-code').data(d.countries).join('text')
     .attr('class','col-code')
@@ -1795,13 +1803,29 @@ function renderHeatmap(d) {
     .attr('font-family','Chakra Petch, sans-serif').attr('letter-spacing','.1em')
     .text(c => c);
 
+  // Column flag images
+  g.selectAll('.col-flag').data(d.countries).join('image')
+    .attr('class','col-flag')
+    .attr('href', c => `https://flagcdn.com/w20/${FIPS_ISO2[c]||'xx'}.png`)
+    .attr('x', (_, i) => i * cellSize + cellSize / 2 - 10)
+    .attr('y', -52)
+    .attr('width', 20).attr('height', 14);
+
   // Row headers (left)
   g.selectAll('.row-label').data(d.countries).join('text')
     .attr('class','row-label')
-    .attr('x', -10).attr('y', (_, i) => i * cellSize + cellSize / 2)
+    .attr('x', -28).attr('y', (_, i) => i * cellSize + cellSize / 2)
     .attr('text-anchor','end').attr('dominant-baseline','middle')
     .attr('font-size', cellSize < 40 ? 11 : 14)
-    .text((code, i) => `${d.flags[i]} ${d.names[i].split(' ')[0]}`);
+    .text((code, i) => d.names[i].split(' ')[0]);
+
+  // Row flag images
+  g.selectAll('.row-flag').data(d.countries).join('image')
+    .attr('class','row-flag')
+    .attr('href', c => `https://flagcdn.com/w20/${FIPS_ISO2[c]||'xx'}.png`)
+    .attr('x', -24)
+    .attr('y', (_, i) => i * cellSize + cellSize / 2 - 7)
+    .attr('width', 20).attr('height', 14);
 
   // Cells
   const rows = g.selectAll('.row').data(matrix).join('g')
