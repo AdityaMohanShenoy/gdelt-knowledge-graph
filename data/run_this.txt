@@ -1,0 +1,43 @@
+# GKG theme ontology analysis (one-shot)
+# Produces:
+#   gkgthemes.txt
+#   prefixes_level1.txt, prefixes_level2.txt
+#   gkgthemes_no_tax.txt, prefixes_no_tax_level1.txt, prefixes_no_tax_level2.txt
+#   gkgthemes_clean.txt, prefixes_clean_level1.txt, prefixes_clean_level2.txt
+#   dropped_prefixes.txt
+
+set -euo pipefail
+
+URL="http://data.gdeltproject.org/api/v2/guides/LOOKUP-GKGTHEMES.TXT"
+IN="gkgthemes.txt"
+
+curl -fsSL -o "$IN" "$URL"
+
+# Raw prefix distributions
+cut -f1 "$IN" | cut -d'_' -f1 | sort | uniq -c | sort -nr > prefixes_level1.txt
+cut -f1 "$IN" | awk -F_ '{print $1"_"$2}' | sort | uniq -c | sort -nr > prefixes_level2.txt
+
+# Remove TAX_* and recompute
+grep -v '^TAX_' "$IN" > gkgthemes_no_tax.txt
+cut -f1 gkgthemes_no_tax.txt | cut -d'_' -f1 | sort | uniq -c | sort -nr > prefixes_no_tax_level1.txt
+cut -f1 gkgthemes_no_tax.txt | awk -F_ '{print $1"_"$2}' | sort | uniq -c | sort -nr > prefixes_no_tax_level2.txt
+
+# Remove additional metadata families and recompute
+# Drops: TAX_*, WB_*, UNGP_*, SLFID*, SELF*
+grep -Ev '^(TAX_|WB_|UNGP_|SLFID|SELF)' "$IN" > gkgthemes_clean.txt
+cut -f1 gkgthemes_clean.txt | cut -d'_' -f1 | sort | uniq -c | sort -nr > prefixes_clean_level1.txt
+cut -f1 gkgthemes_clean.txt | awk -F_ '{print $1"_"$2}' | sort | uniq -c | sort -nr > prefixes_clean_level2.txt
+
+cat > dropped_prefixes.txt <<'TXT'
+TAX_
+WB_
+UNGP_
+SLFID
+SELF
+TXT
+
+echo "Done."
+echo "Raw:        prefixes_level1.txt / prefixes_level2.txt"
+echo "No TAX:     prefixes_no_tax_level1.txt / prefixes_no_tax_level2.txt"
+echo "Cleaned:    prefixes_clean_level1.txt / prefixes_clean_level2.txt"
+echo "Theme files: gkgthemes.txt / gkgthemes_no_tax.txt / gkgthemes_clean.txt"
