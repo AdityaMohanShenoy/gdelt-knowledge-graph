@@ -1,8 +1,22 @@
-duckdb>=0.10.0
-polars>=0.20.0
-pyarrow>=14.0.0
-aiohttp>=3.9.0
-neo4j>=5.0.0
-pandas>=2.0.0
-fastapi>=0.100.0
-uvicorn>=0.23.0
+# Compatibility install for machines that use pip instead of uv.
+# For reproducible development, prefer: uv sync
+aiohttp>=3.10.0
+duckdb>=1.1.0
+fastapi>=0.115.0
+neo4j>=5.25.0
+numpy>=2.1.0
+opentelemetry-api>=1.28.0
+opentelemetry-instrumentation-aiohttp-client>=0.49b0
+opentelemetry-instrumentation-fastapi>=0.49b0
+opentelemetry-sdk>=1.28.0
+pandas>=2.2.0
+polars>=1.15.0
+prefect>=3.1.0
+pydantic>=2.9.0
+pydantic-settings>=2.6.0
+pyarrow>=18.0.0
+qdrant-client>=1.12.0
+spacy>=3.8.0
+torch>=2.5.0
+transformers>=4.46.0
+uvicorn[standard]>=0.32.0

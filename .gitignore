@@ -1,4 +1,4 @@
-# Raw GDELT data (24GB - too large for GitHub)
+# Raw GDELT data (too large for GitHub)
 out_parquet/
 
 # Pipeline outputs (generated, can be reproduced)
@@ -8,15 +8,19 @@ out/step3_url_validated.parquet
 out/url_cache.json
 out/ingest_progress.json
 
-# Keep the curated CSV and country list
+# Keep curated outputs and country list
 !out/all_curated.csv.gz
 !out/top10_countries_2024.txt
 
 # Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 dist/
 build/
 .eggs/
@@ -30,17 +34,31 @@ __MACOSX/
 .vscode/
 .idea/
 
-# Environment
-.env
-venv/
+# Environments and local configuration
 .venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# TypeScript tooling
+node_modules/
+.vite/
+coverage/
+playwright-report/
+test-results/
+
+# Local services and generated artifacts
+.prefect/
+.qdrant/
+data/raw/
+data/evidence/
+*.duckdb
+*.duckdb.wal
+*.sqlite
 
 # Claude Code
 .claude/
 
-# DuckDB temp files
-*.duckdb
-*.duckdb.wal
-
-# Large GDELT manifest (115MB)
+# Large GDELT manifest
 data/snapshot.txt

@@ -1,0 +1,59 @@
+[project]
+name = "decoding-domino-effect"
+version = "0.1.0"
+description = "Evidence-backed causal reasoning over a temporal knowledge graph of Indian protests and civil unrest."
+readme = "PROJECT_CONTEXT.md"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "aiohttp>=3.10.0",
+    "duckdb>=1.1.0",
+    "fastapi>=0.115.0",
+    "neo4j>=5.25.0",
+    "numpy>=2.1.0",
+    "opentelemetry-api>=1.28.0",
+    "opentelemetry-instrumentation-aiohttp-client>=0.49b0",
+    "opentelemetry-instrumentation-fastapi>=0.49b0",
+    "opentelemetry-sdk>=1.28.0",
+    "pandas>=2.2.0",
+    "polars>=1.15.0",
+    "prefect>=3.1.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "pyarrow>=18.0.0",
+    "qdrant-client>=1.12.0",
+    "spacy>=3.8.0",
+    "torch>=2.5.0",
+    "transformers>=4.46.0",
+    "uvicorn[standard]>=0.32.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27.0",
+    "mypy>=1.13.0",
+    "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+package = false
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [".venv", "out", "out_parquet"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
