@@ -1,242 +1,133 @@
-# GDELT Knowledge Graph
+# Decoding the Domino Effect
 
-An interactive knowledge graph and intelligence dashboard built on the [GDELT 2.0](https://www.gdeltproject.org/) dataset (2024). The project filters 26.7 million geopolitical events down to ~1.1 million causally significant events across the world's 10 most active countries, then visualizes them through a browser-based intelligence dashboard.
+Decoding the Domino Effect is a research project on evidence-backed causal reasoning over temporal knowledge graphs built from GDELT data.
 
-![Python](https://img.shields.io/badge/Python-3.10+-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green)
-![DuckDB](https://img.shields.io/badge/DuckDB-0.10+-yellow)
-![D3.js](https://img.shields.io/badge/D3.js-v7-orange)
-![License](https://img.shields.io/badge/License-MIT-lightgrey)
+The repository currently contains the existing Python exploration pipeline and dashboard. The new local-first Python/Bun environment is installed and reproducible, but the planned Hono gateway, React frontend, Prefect orchestration, and verified causal graph are not implemented yet.
 
----
+See [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for the research context and [docs/techstack.md](docs/techstack.md) for the technology choices.
 
-## Overview
+## Requirements
 
-GDELT (Global Database of Events, Language, and Tone) is the world's largest open-source event database, monitoring broadcast, print, and web news globally. This project takes the full 2024 GDELT export (~24GB, 365 daily Parquet files) and:
+- Python 3.11–3.14
+- [uv](https://docs.astral.sh/uv/)
+- [Bun](https://bun.sh/) 1.3.14 or newer
+- GDELT 2024 event Parquet data under `out_parquet/events/year=2024/`
+- Neo4j is optional and only required for the Neo4j export step
 
-1. **Filters** to the top 10 countries by event volume
-2. **Identifies causal chains** using temporal proximity analysis
-3. **Validates source URLs** to remove events with dead news links
-4. **Visualizes** the cleaned data through a 5-tab interactive dashboard
+The data files are not committed because of their size.
 
-### Top 10 Countries Analyzed
-| Code | Country | Code | Country |
-|------|---------|------|---------|
-| US | United States | UK | United Kingdom |
-| IS | Israel | PK | Pakistan |
-| UP | Ukraine | NI | Nigeria |
-| RS | Russia | DJ | Djibouti |
-| IN | India | AS | Australia |
+## Install
 
----
-
-## Features
-
-### Knowledge Graph Tab
-- **Circular & force-directed** graph layouts (toggle between them)
-- **Curved bezier edges** with CAMEO event-type labels (e.g., "DEMAND", "COOPERATE")
-- **Edge threshold slider** to control visual density
-- **Click edges** to open a detail drawer showing: CAMEO description, event statistics, monthly frequency chart, causal chain analysis, and sample events with source links
-- **Click nodes** to highlight a country's connections
-
-### Timeline Tab
-- Stacked bar chart showing monthly event volume by QuadClass (Verbal/Material Cooperation & Conflict)
-- Goldstein Scale trend line overlay showing sentiment over time
-
-### Country Analysis Tab
-- Cards for each country with flag, total event count, QuadClass breakdown bar, and monthly sparkline
-
-### Event Explorer Tab
-- Paginated, searchable table of all events
-- Filter by QuadClass (cooperation/conflict chips)
-- Color-coded rows by event type
-
-### Heatmap Tab
-- 10x10 country-pair interaction matrix
-- Toggle between event count and average Goldstein Scale modes
-
----
-
-## Architecture
-
-```
-capstone_data/
-├── app.py                  # FastAPI backend (7 API endpoints + static file serving)
-├── requirements.txt        # Python dependencies
-├── frontend/
-│   └── index.html          # Single-page app (D3.js, Chart.js, vanilla JS)
-├── pipeline/
-│   ├── 01_filter_countries.py   # Step 1: Country filter (DuckDB SQL on Parquet)
-│   ├── 02_causal_filter.py      # Step 2: Causal in-degree filter (DuckDB window functions)
-│   ├── 03_validate_urls.py      # Step 3: Async URL validation (aiohttp)
-│   ├── 04_export_neo4j.py       # Step 4: Neo4j graph database export
-│   └── utils.py                 # Shared lookups (CAMEO codes, country names)
-├── out/                         # Pipeline outputs (generated, not committed)
-│   ├── step1_country_filtered.parquet
-│   ├── step2_causal_filtered.parquet
-│   ├── step3_url_validated.parquet
-│   └── url_cache.json
-├── out_parquet/                 # Raw GDELT Parquet data (24GB, not committed)
-│   └── events/year=2024/month=MM/day=YYYYMMDD/part-00000.parquet
-└── data/
-    ├── reference_lookups/       # CAMEO PDF lookup tables
-    └── themes/                  # GKG theme aggregations
-```
-
----
-
-## Data Pipeline
-
-The pipeline progressively cleans and filters the raw GDELT data:
-
-### Step 1: Country Filter (`01_filter_countries.py`)
-- Reads all 365 daily Parquet files via **DuckDB** SQL (no need to load 24GB into RAM)
-- Filters events where any actor or location matches the top 10 countries
-- **Input:** 26.7M events (24GB) | **Output:** 26.7M events (data was pre-filtered)
-
-### Step 2: Causal Filter (`02_causal_filter.py`)
-- Computes **causal in-degree** for each event: how many prior events (within a 7-day window) share the same country-pair and CAMEO root code
-- Uses DuckDB window functions (`COUNT(*) OVER PARTITION BY ... RANGE BETWEEN INTERVAL 7 DAYS PRECEDING`) for memory-efficient computation
-- Keeps events with `causal_in_degree <= 2` (root causes and simple chains)
-- **Input:** 26.7M events | **Output:** 1.12M events (4.2% retained)
-
-### Step 3: URL Validation (`03_validate_urls.py`)
-- Validates every unique `SOURCEURL` via async HTTP HEAD requests
-- **aiohttp** with concurrency=50, timeout=10s, 1 retry on failure
-- Marks URLs as dead if status is 404, 410, 451, or connection error
-- Caches results to `url_cache.json` (resume-safe for long runs)
-- **Input:** ~530K unique URLs | **Output:** drops events with dead URLs
-
-### Step 4: Neo4j Export (`04_export_neo4j.py`)
-- Loads cleaned data into **Neo4j** graph database
-- Creates nodes: `Event`, `Country`, `Actor`, `Article`
-- Creates relationships: `ACTOR1_IN`, `ACTOR2_IN`, `OCCURRED_IN`, `MENTIONED_IN`, `PRECEDED_BY`
-- Uses batched `MERGE` statements (batch size 500) with uniqueness constraints
-
-```
-Graph Schema:
-  (Actor) -[:ACTOR1_IN]-> (Event) -[:OCCURRED_IN]-> (Country)
-  (Actor) -[:ACTOR2_IN]-> (Event) -[:MENTIONED_IN]-> (Article)
-                          (Event) -[:PRECEDED_BY]->  (Event)
-```
-
----
-
-## API Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/stats` | Total events, date range, country count |
-| `GET /api/graph` | Knowledge graph data (nodes + edges with QuadClass & CAMEO labels) |
-| `GET /api/edge-detail` | Detailed edge info: CAMEO description, sample events, causal analysis |
-| `GET /api/timeline` | Monthly QuadClass breakdown + Goldstein trend |
-| `GET /api/country-stats` | Per-country stats with monthly sparkline data |
-| `GET /api/events` | Paginated event list with search & filter |
-| `GET /api/heatmap` | 10x10 country-pair interaction matrix |
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| **Backend** | Python 3.10+, FastAPI, DuckDB |
-| **Frontend** | Vanilla JS, D3.js v7, Chart.js |
-| **Data Processing** | DuckDB (SQL on Parquet), Polars, aiohttp |
-| **Graph Database** | Neo4j (optional, for Cypher queries) |
-| **Data Format** | Apache Parquet (Hive-partitioned) |
-
----
-
-## Getting Started
-
-### Prerequisites
-- Python 3.10+
-- GDELT 2024 Parquet data in `out_parquet/events/year=2024/` (not included in repo due to size)
-- Neo4j (optional, only for Step 4)
-
-### Installation
+From the repository root:
 
 ```bash
-# Clone the repo
-git clone https://github.com/<your-username>/gdelt-knowledge-graph.git
-cd gdelt-knowledge-graph
-
-# Install dependencies
-pip install -r requirements.txt
-pip install fastapi uvicorn
+uv sync
+bun install
 ```
 
-### Running the Pipeline
+`uv sync` creates `.venv` and installs the Python runtime and development dependencies from `pyproject.toml` and `uv.lock`. `bun install` installs the TypeScript workspace dependencies from `package.json` and `bun.lock`.
+
+For later installs or CI, use the lockfiles exactly:
 
 ```bash
-# Step 1: Filter to top 10 countries
-python pipeline/01_filter_countries.py
-
-# Step 2: Causal filtering (takes ~5 min on 26.7M events)
-python pipeline/02_causal_filter.py
-
-# Step 3: Validate URLs (long-running, resume-safe)
-python pipeline/03_validate_urls.py
-
-# Step 4: Export to Neo4j (requires running Neo4j instance)
-# Set NEO4J_PASSWORD=yourpassword first
-python pipeline/04_export_neo4j.py
+uv sync --locked
+bun install --frozen-lockfile
 ```
 
-### Running the Dashboard
+If uv is not available, the Python dependencies can be installed with pip:
 
 ```bash
-# Start the server (uses step2 or step3 data automatically)
-uvicorn app:app --reload --port 8000
-
-# Open in browser
-# http://localhost:8000
+python -m venv .venv
+source .venv/bin/activate                 # macOS/Linux
+# .venv\Scripts\activate                 # Windows
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
----
+## Verify the installation
 
-## Key Concepts
+```bash
+uv lock --check
+uv run python -c "import duckdb, fastapi, neo4j, prefect, qdrant_client, spacy, torch, transformers; print('Python dependencies: OK')"
+bun x biome --version
+bun x vitest --version
+```
 
-### CAMEO Event Codes
-GDELT uses the [CAMEO](https://parusanalytics.com/eventdata/data.dir/CAMEO.Manual.1.1b3.pdf) coding system with 20 root event types:
+If Bun reports blocked lifecycle scripts during installation, trust the required local tooling and reinstall:
 
-| Code | Type | Code | Type |
-|------|------|------|------|
-| 01 | Public Statement | 11 | Disapprove |
-| 02 | Appeal | 12 | Reject |
-| 03 | Express Intent to Cooperate | 13 | Threaten |
-| 04 | Consult | 14 | Protest |
-| 05 | Diplomatic Cooperation | 15 | Exhibit Force |
-| 06 | Material Cooperation | 16 | Reduce Relations |
-| 07 | Provide Aid | 17 | Coerce |
-| 08 | Yield | 18 | Assault |
-| 09 | Investigate | 19 | Fight |
-| 10 | Demand | 20 | Mass Violence |
+```bash
+bun pm trust @biomejs/biome esbuild
+bun install --frozen-lockfile
+```
 
-### QuadClass
-Events are categorized into 4 quadrants:
-- **Verbal Cooperation** (1) — diplomatic statements, agreements
-- **Material Cooperation** (2) — aid, trade, physical assistance
-- **Verbal Conflict** (3) — threats, demands, accusations
-- **Material Conflict** (4) — military action, violence, sanctions
+## Run the current pipeline
 
-### Goldstein Scale
-A numeric score from **-10** (most conflictual) to **+10** (most cooperative) measuring the theoretical impact of an event on country stability.
+Run commands from the repository root. The pipeline stages are sequential:
 
----
+```bash
+uv run python pipeline/01_filter_countries.py
+uv run python pipeline/02_causal_filter.py
+uv run python pipeline/03_validate_urls.py
+```
 
-## Dataset
+The URL validation stage makes external HTTP requests and may take time. The generated files are written to `out/`.
 
-The raw GDELT 2.0 data (not included in this repo) consists of:
-- **365 daily Parquet files** (Hive-partitioned by year/month/day)
-- **~26.7 million events** for the year 2024
-- **13 columns per event:** GlobalEventID, EventCode, EventRootCode, QuadClass, GoldsteinScale, Actor1Name, Actor1CountryCode, Actor2Name, Actor2CountryCode, ActionGeo_CountryCode, SOURCEURL, day, datetime
+To export the processed data to Neo4j, start a local Neo4j instance and provide its connection settings. For macOS/Linux:
 
-To obtain the data, visit the [GDELT Project](https://www.gdeltproject.org/) and download the 2024 event files.
+```bash
+export NEO4J_URI=bolt://localhost:7687
+export NEO4J_USER=neo4j
+export NEO4J_PASSWORD=yourpassword
+uv run python pipeline/04_export_neo4j.py
+```
 
----
+The Neo4j export is optional; the first three stages do not require Neo4j.
 
-## License
+## Run the current dashboard
 
-This project is for educational and research purposes. GDELT data is freely available under the [GDELT Terms of Use](https://www.gdeltproject.org/about.html#termsofuse).
+The dashboard reads the output produced by the causal-filtering stage, or the URL-validation output when it exists:
+
+```bash
+uv run uvicorn app:app --reload --port 8000
+```
+
+Open <http://localhost:8000> in a browser.
+
+If the dashboard reports that no processed data was found, run at least:
+
+```bash
+uv run python pipeline/01_filter_countries.py
+uv run python pipeline/02_causal_filter.py
+```
+
+## TypeScript workspace status
+
+The Bun workspace currently provides the dependency and tooling foundation. The application packages have not been built yet, so there is no Bun command that starts the planned web interface or gateway at this stage.
+
+The available tooling commands are:
+
+```bash
+bun run lint
+bun run format
+bun run typecheck
+bun run test
+```
+
+These commands become the standard checks as the new TypeScript packages are added.
+
+## Project status
+
+Runnable today:
+
+- Python GDELT filtering, causal filtering, URL validation, and optional Neo4j export
+- Existing FastAPI/D3 dashboard
+
+Prepared but still to be implemented:
+
+- Canonical event and evidence schemas
+- Temporal-uncertainty representation
+- Candidate and verified causal-edge extraction
+- Prefect workflows
+- Qdrant semantic retrieval
+- Hono API gateway and React/Vite frontend
+- Evaluation for causal precision, evidence grounding, explanation faithfulness, and temporal coherence
