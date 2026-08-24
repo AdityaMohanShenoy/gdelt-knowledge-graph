@@ -1,0 +1,6 @@
+interface:
+  display_name: "GitHub Workflow"
+  short_description: "Prepare clean commits and draft pull requests"
+  default_prompt: "Use $gh to prepare a conventional commit and draft pull request for this change."
+policy:
+  allow_implicit_invocation: true

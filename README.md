@@ -4,7 +4,11 @@ Decoding the Domino Effect is a research project on evidence-backed causal reaso
 
 The repository currently contains the existing Python exploration pipeline and dashboard. The new local-first Python/Bun environment is installed and reproducible, but the planned Hono gateway, React frontend, Prefect orchestration, and verified causal graph are not implemented yet.
 
-See [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for the research context and [docs/techstack.md](docs/techstack.md) for the technology choices.
+See [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) for the research context and [docs/techstack.md](docs/techstack.md) for the technology choices.
+
+## Agent and contribution workflow
+
+Repository-wide agent instructions are in [AGENTS.md](AGENTS.md). The local GitHub workflow skill is in [.agents/gh/SKILL.md](.agents/gh/SKILL.md) and defines the required commit, branch, testing, and draft pull-request process.
 
 ## Requirements
 
