@@ -2,7 +2,7 @@
 
 Decoding the Domino Effect is a research project on evidence-backed causal reasoning over temporal knowledge graphs built from GDELT data.
 
-The repository currently contains the existing Python exploration pipeline and dashboard. The new local-first Python/Bun environment is installed and reproducible, but the planned Hono gateway, React frontend, Prefect orchestration, and verified causal graph are not implemented yet.
+The previous Python exploration pipeline and dashboard are preserved in [archive/legacy-exploration/](archive/legacy-exploration/). The active project is now being rebuilt around a smaller, reproducible dataset of civil unrest and protests in India, followed by a pilot annotation set.
 
 See [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) for the research context and [docs/techstack.md](docs/techstack.md) for the technology choices.
 
@@ -18,7 +18,7 @@ Repository-wide agent instructions are in [AGENTS.md](AGENTS.md). The local GitH
 - GDELT 2024 event Parquet data under `out_parquet/events/year=2024/`
 - Neo4j is optional and only required for the Neo4j export step
 
-The data files are not committed because of their size.
+The raw GDELT data files are not committed because of their size.
 
 ## Install
 
@@ -64,45 +64,11 @@ bun pm trust @biomejs/biome esbuild
 bun install --frozen-lockfile
 ```
 
-## Run the current pipeline
+## Legacy implementation
 
-Run commands from the repository root. The pipeline stages are sequential:
+The former country-filtering pipeline, URL validation, Neo4j export, FastAPI application, frontend, and historical curated outputs are preserved under `archive/legacy-exploration/` for reference. They are not the active data workflow and their old commands should not be used to produce the new working dataset.
 
-```bash
-uv run python pipeline/01_filter_countries.py
-uv run python pipeline/02_causal_filter.py
-uv run python pipeline/03_validate_urls.py
-```
-
-The URL validation stage makes external HTTP requests and may take time. The generated files are written to `out/`.
-
-To export the processed data to Neo4j, start a local Neo4j instance and provide its connection settings. For macOS/Linux:
-
-```bash
-export NEO4J_URI=bolt://localhost:7687
-export NEO4J_USER=neo4j
-export NEO4J_PASSWORD=yourpassword
-uv run python pipeline/04_export_neo4j.py
-```
-
-The Neo4j export is optional; the first three stages do not require Neo4j.
-
-## Run the current dashboard
-
-The dashboard reads the output produced by the causal-filtering stage, or the URL-validation output when it exists:
-
-```bash
-uv run uvicorn app:app --reload --port 8000
-```
-
-Open <http://localhost:8000> in a browser.
-
-If the dashboard reports that no processed data was found, run at least:
-
-```bash
-uv run python pipeline/01_filter_countries.py
-uv run python pipeline/02_causal_filter.py
-```
+The local raw GDELT snapshot remains under `out_parquet/`. It is intentionally ignored by Git and is the input for the fresh India-focused workflow.
 
 ## TypeScript workspace status
 
@@ -121,12 +87,20 @@ These commands become the standard checks as the new TypeScript packages are add
 
 ## Project status
 
-Runnable today:
+Archived for reference:
 
-- Python GDELT filtering, causal filtering, URL validation, and optional Neo4j export
-- Existing FastAPI/D3 dashboard
+- Previous Python filtering, causal filtering, URL validation, Neo4j export, and FastAPI/D3 dashboard
+- Historical curated output and top-country summary
 
-Prepared but still to be implemented:
+Next active work:
+
+- India action-location filtering for the frozen 2024 raw snapshot
+- A small reproducible working dataset for protests and civil unrest
+- Canonical event and evidence schemas
+- A stratified pilot sample and annotation guide
+- Node and candidate-edge annotations for a few hundred records
+
+Prepared but still to be implemented after the pilot:
 
 - Canonical event and evidence schemas
 - Temporal-uncertainty representation
