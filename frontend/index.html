@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GDELT INTEL · 2024</title>
+<title>GDELT INTEL</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,300;0,400;0,600;0,700;1,300&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
@@ -582,7 +582,7 @@ body::after {
     </div>
     <div class="stat-item">
       <span class="stat-label">Period</span>
-      <span class="stat-value" id="stat-period">2024</span>
+      <span class="stat-value" id="stat-period">—</span>
     </div>
     <div class="stat-item">
       <span class="stat-label">Filtered</span>
@@ -839,6 +839,7 @@ const state = {
   explorer: { page: 1, total: 0, search: '', quad: '' },
   heatmapMode: 'count',
   charts: {},
+  period: '',
   graphInitialized: false,
   tabsLoaded: new Set(['graph']),
 };
@@ -963,7 +964,10 @@ async function loadStats() {
   if (!d) return;
   $('stat-events').textContent = fmt(d.total_events);
   $('stat-filtered').textContent = fmt(d.total_events);
-  $('stat-period').textContent = `${d.date_from.slice(0,4)}`;
+  const y0 = d.date_from.slice(0, 4), y1 = d.date_to.slice(0, 4);
+  state.period = y0 === y1 ? y0 : `${y0}–${y1}`;
+  $('stat-period').textContent = state.period;
+  document.title = `GDELT INTEL · ${state.period}`;
 }
 
 /* ══════════════════════════════════════════
@@ -1421,7 +1425,7 @@ async function openEdgeDrawer(edge) {
         </div>
       </div>
       <div style="margin-top:6px;">
-        <div style="font-size:9px;letter-spacing:.1em;color:var(--text-dim);margin-bottom:4px">MONTHLY FREQUENCY (2024)</div>
+        <div style="font-size:9px;letter-spacing:.1em;color:var(--text-dim);margin-bottom:4px">MONTHLY FREQUENCY${state.period ? ` (${state.period})` : ''}</div>
         <div class="mini-bar-chart">${bars}</div>
         <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--text-dim);font-family:var(--mono);margin-top:2px">
           <span>${fmtDay(d.stats.first_day)}</span><span>${fmtDay(d.stats.last_day)}</span>
