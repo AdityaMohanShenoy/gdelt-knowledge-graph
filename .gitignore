@@ -3,7 +3,6 @@ out_parquet/
 
 # Pipeline outputs (generated, can be reproduced)
 out/step1_country_filtered.parquet
-out/step2_causal_filtered.parquet
 out/step3_url_validated.parquet
 out/url_cache.json
 out/ingest_progress.json

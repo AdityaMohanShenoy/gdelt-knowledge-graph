@@ -73,7 +73,7 @@ capstone_data/
 │   └── utils.py                 # Shared lookups (CAMEO codes, country names)
 ├── out/                         # Pipeline outputs (generated, not committed)
 │   ├── step1_country_filtered.parquet
-│   ├── step2_causal_filtered.parquet
+│   ├── step2_causal_filtered.parquet   # committed — the only file the API reads
 │   ├── step3_url_validated.parquet
 │   └── url_cache.json
 ├── out_parquet/                 # Raw GDELT Parquet data (24GB, not committed)
@@ -162,9 +162,11 @@ Graph Schema:
 git clone https://github.com/<your-username>/gdelt-knowledge-graph.git
 cd gdelt-knowledge-graph
 
-# Install dependencies
+# Dashboard only (duckdb + fastapi)
 pip install -r requirements.txt
-pip install fastapi uvicorn
+
+# Extra deps, only if you re-run the data pipeline
+pip install -r pipeline/requirements.txt
 ```
 
 ### Running the Pipeline

@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+import os
 import duckdb
 import math
 
@@ -19,6 +20,14 @@ app.add_middleware(
     allow_origins=["*"], allow_credentials=True,
     allow_methods=["*"], allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def cache_api(request, call_next):
+    resp = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "public, max-age=0, s-maxage=31536000, stale-while-revalidate=86400"
+    return resp
+
 
 ROOT = Path(__file__).parent
 
@@ -57,13 +66,40 @@ _con: duckdb.DuckDBPyConnection | None = None
 def get_con() -> duckdb.DuckDBPyConnection:
     global _con
     if _con is None:
-        _con = duckdb.connect()
+        # Vercel: only /tmp is writable, and DuckDB sizes itself from the host's
+        # /proc/meminfo rather than the container's cgroup limit -- left alone it
+        # over-commits RAM and the function gets OOM-killed.
+        cfg = {"memory_limit": "1GB", "threads": "1",
+               "temp_directory": "/tmp", "home_directory": "/tmp"} if os.environ.get("VERCEL") else {}
+        _con = duckdb.connect(config=cfg)
         path = str(DATA_FILE).replace("\\", "/")
         _con.execute(f"CREATE VIEW events AS SELECT * FROM read_parquet('{path}')")
     return _con
 
+def num(v, default=0.0) -> float:
+    """AVG() over zero rows is SQL NULL, which reaches us as None from
+    fetchone() tuples and as NaN from _rows() dicts. Guard both."""
+    return default if v is None or v != v else float(v)
+
+
 def safe(s: str) -> str:
     return s.replace("'", "''")
+
+# DuckDB rows as dicts. SQL NULL -> NaN in numeric columns so the `x == x`
+# guards below keep behaving exactly as they did with pandas DataFrames.
+_NUMERIC = {"TINYINT","SMALLINT","INTEGER","BIGINT","HUGEINT","UTINYINT","USMALLINT",
+            "UINTEGER","UBIGINT","FLOAT","DOUBLE","DECIMAL","REAL"}
+
+def _rows(cur) -> list[dict]:
+    cols = [d[0] for d in cur.description]
+    numeric = {i for i, d in enumerate(cur.description)
+               if str(d[1]).split("(")[0] in _NUMERIC}
+    nan = float("nan")
+    return [
+        {c: (nan if (i in numeric and v is None) else v)
+         for i, (c, v) in enumerate(zip(cols, row))}
+        for row in cur.fetchall()
+    ]
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def _country_filter(country: str, col: str = "ActionGeo_CountryCode") -> str:
@@ -99,8 +135,8 @@ async def stats():
 async def graph(
     country: str = "",
     quad_class: str = "",
-    date_from: int = 20240101,
-    date_to: int = 20241231,
+    date_from: int = 19790101,
+    date_to: int = 20991231,
 ):
     con = get_con()
     cf = _country_filter(country)
@@ -108,14 +144,15 @@ async def graph(
     df_range = _date_filter(date_from, date_to)
 
     # Node stats per country
-    nodes_df = con.execute(f"""
+    nodes_df = _rows(con.execute(f"""
         SELECT ActionGeo_CountryCode AS cc,
                COUNT(*) AS n,
                AVG(GoldsteinScale) AS avg_g,
                COUNT(CASE WHEN QuadClass IN ('3','4') THEN 1 END) AS n_conflict
         FROM events WHERE 1=1 {df_range} {cf} {qf}
         GROUP BY cc
-    """).df()
+        ORDER BY cc
+    """))
 
     ROOT_CODE_SHORT = {
         "01":"STATEMENT","02":"APPEAL","03":"INTENT","04":"CONSULT","05":"DIPLOMACY",
@@ -125,7 +162,7 @@ async def graph(
     }
 
     # Edge stats with dominant EventRootCode per pair
-    edges_df = con.execute(f"""
+    edges_df = _rows(con.execute(f"""
         WITH base AS (
             SELECT Actor1CountryCode AS c1, Actor2CountryCode AS c2,
                    QuadClass AS q, EventRootCode AS rc,
@@ -141,7 +178,7 @@ async def graph(
             FROM base GROUP BY c1, c2
         ),
         ranked AS (
-            SELECT b.*, ROW_NUMBER() OVER (PARTITION BY b.c1, b.c2 ORDER BY b.n DESC) AS rn
+            SELECT b.*, ROW_NUMBER() OVER (PARTITION BY b.c1, b.c2 ORDER BY b.n DESC, b.rc) AS rn
             FROM base b
         )
         SELECT r.c1, r.c2, r.q AS dominant_q, r.rc AS dominant_rc,
@@ -149,20 +186,21 @@ async def graph(
         FROM ranked r
         JOIN pair_totals p ON r.c1=p.c1 AND r.c2=p.c2
         WHERE r.rn = 1 AND p.total_n > 5
-    """).df()
+        ORDER BY r.c1, r.c2
+    """))
 
     nodes = []
-    for _, r in nodes_df.iterrows():
+    for r in nodes_df:
         cc = r["cc"]
         nodes.append({
             "id": cc, "label": FIPS_NAME.get(cc, cc), "flag": FIPS_FLAG.get(cc, "🌍"),
             "event_count": int(r["n"]),
-            "avg_goldstein": round(float(r["avg_g"]) if r["avg_g"] == r["avg_g"] else 0, 3),
+            "avg_goldstein": round(num(r["avg_g"]), 3),
             "conflict_ratio": round(int(r["n_conflict"]) / max(int(r["n"]), 1), 3),
         })
 
     edges = []
-    for _, r in edges_df.iterrows():
+    for r in edges_df:
         c1 = ISO_FIPS.get(str(r["c1"]), "")
         c2 = ISO_FIPS.get(str(r["c2"]), "")
         if not c1 or not c2 or c1 == c2 or c1 not in TOP10 or c2 not in TOP10:
@@ -174,7 +212,7 @@ async def graph(
             "dominant_quad": str(r["dominant_q"]),
             "dominant_root": rc,
             "root_label": ROOT_CODE_SHORT.get(rc, rc),
-            "avg_goldstein": round(float(r["pair_avg_g"]) if r["pair_avg_g"] == r["pair_avg_g"] else 0, 3),
+            "avg_goldstein": round(num(r["pair_avg_g"]), 3),
         })
 
     return {"nodes": nodes, "edges": edges}
@@ -224,7 +262,7 @@ async def edge_detail(source: str = "", target: str = "", root_code: str = ""):
     tgt_iso = FIPS_ISO.get(target, target)
 
     # ── Sample events for this country pair + root code ──────────────────
-    sample_df = con.execute(f"""
+    sample_df = _rows(con.execute(f"""
         SELECT day, Actor1Name, Actor1CountryCode, Actor2Name, Actor2CountryCode,
                EventCode, EventRootCode, QuadClass, GoldsteinScale, SOURCEURL,
                causal_in_degree, precursor_ids
@@ -236,11 +274,11 @@ async def edge_detail(source: str = "", target: str = "", root_code: str = ""):
           )
         ORDER BY ABS(GoldsteinScale) DESC, day DESC
         LIMIT 8
-    """).df()
+    """))
 
     samples = []
-    for _, r in sample_df.iterrows():
-        g = float(r["GoldsteinScale"]) if r["GoldsteinScale"] == r["GoldsteinScale"] else 0
+    for r in sample_df:
+        g = num(r["GoldsteinScale"])
         samples.append({
             "date":      str(int(r["day"])),
             "actor1":    str(r["Actor1Name"])  if r["Actor1Name"]  else "—",
@@ -249,7 +287,7 @@ async def edge_detail(source: str = "", target: str = "", root_code: str = ""):
             "quad":      str(r["QuadClass"])   if r["QuadClass"]   else "",
             "goldstein": round(g, 2),
             "url":       str(r["SOURCEURL"])   if r["SOURCEURL"]   else "",
-            "causal_degree": int(r["causal_in_degree"]) if r["causal_in_degree"] == r["causal_in_degree"] else 0,
+            "causal_degree": int(num(r["causal_in_degree"])),
         })
 
     # ── Aggregate stats for this pair ────────────────────────────────────
@@ -269,7 +307,7 @@ async def edge_detail(source: str = "", target: str = "", root_code: str = ""):
     # Strategy: find root codes that appear as causal_in_degree=0 events for the
     # same source country in the same months as our target event type
     # (lightweight proxy for "what triggers this")
-    causes_df = con.execute(f"""
+    causes_df = _rows(con.execute(f"""
         WITH target_months AS (
             SELECT DISTINCT CAST(day/100 AS INTEGER) AS month
             FROM events
@@ -288,25 +326,25 @@ async def edge_detail(source: str = "", target: str = "", root_code: str = ""):
         GROUP BY cause_rc
         ORDER BY n DESC
         LIMIT 4
-    """).df()
+    """))
 
     causes = []
-    for _, r in causes_df.iterrows():
+    for r in causes_df:
         crc = str(r["cause_rc"]).zfill(2)
         ctitle, _ = CAMEO_FULL.get(crc, (crc, ""))
         causes.append({"root_code": crc, "label": ctitle, "count": int(r["n"]), "inferred": True})
 
     # ── Monthly frequency ────────────────────────────────────────────────
-    monthly_df = con.execute(f"""
+    monthly_df = _rows(con.execute(f"""
         SELECT CAST(day/100 AS INTEGER) AS month, COUNT(*) AS n
         FROM events
         WHERE EventRootCode = '{rc}'
           AND (Actor1CountryCode = '{src_iso}' OR ActionGeo_CountryCode = '{source}')
         GROUP BY month ORDER BY month
-    """).df()
+    """))
 
     monthly = [{"month": f"{str(int(r['month']))[:4]}-{str(int(r['month']))[4:]}", "count": int(r["n"])}
-               for _, r in monthly_df.iterrows()]
+               for r in monthly_df]
 
     return {
         "source": source,
@@ -316,7 +354,7 @@ async def edge_detail(source: str = "", target: str = "", root_code: str = ""):
         "event_description": description,
         "stats": {
             "total":       int(stats[0]) if stats[0] else 0,
-            "avg_goldstein": round(float(stats[1]) if stats[1] == stats[1] else 0, 2),
+            "avg_goldstein": round(num(stats[1]), 2),
             "first_day":   str(int(stats[2])) if stats[2] else "",
             "last_day":    str(int(stats[3])) if stats[3] else "",
             "conflict_pct": round(int(stats[4]) / max(int(stats[0]), 1) * 100, 1),
@@ -334,26 +372,26 @@ async def timeline(country: str = "", quad_class: str = ""):
     cf  = _country_filter(country)
     qf  = _quad_filter(quad_class)
 
-    df = con.execute(f"""
+    df = _rows(con.execute(f"""
         SELECT CAST(day / 100 AS INTEGER) AS month,
                QuadClass, COUNT(*) AS n, AVG(GoldsteinScale) AS avg_g
         FROM events WHERE 1=1 {cf} {qf}
         GROUP BY month, QuadClass ORDER BY month, QuadClass
-    """).df()
+    """))
 
-    months = sorted(df["month"].unique().tolist())
+    months = sorted({r["month"] for r in df})
     labels = [f"{str(m)[:4]}-{str(m)[4:]}" for m in months]
     m_idx  = {m: i for i, m in enumerate(months)}
 
     quad_data = {q: [0] * len(months) for q in ["1","2","3","4"]}
     gold_acc  = [[0.0, 0] for _ in months]  # [sum, count]
 
-    for _, r in df.iterrows():
+    for r in df:
         idx = m_idx[int(r["month"])]
         q = str(r["QuadClass"])
         if q in quad_data:
             quad_data[q][idx] = int(r["n"])
-        g = float(r["avg_g"]) if r["avg_g"] == r["avg_g"] else 0
+        g = num(r["avg_g"])
         gold_acc[idx][0] += g * int(r["n"])
         gold_acc[idx][1] += int(r["n"])
 
@@ -379,20 +417,20 @@ async def country_stats():
             FROM events WHERE ActionGeo_CountryCode = '{cc}'
         """).fetchone()
 
-        trend = con.execute(f"""
+        trend = _rows(con.execute(f"""
             SELECT CAST(day/100 AS INTEGER) AS month, COUNT(*) AS cnt
             FROM events WHERE ActionGeo_CountryCode = '{cc}'
             GROUP BY month ORDER BY month
-        """).df()
+        """))
 
         total = int(r[0]) or 1
         result.append({
             "code": cc, "name": FIPS_NAME.get(cc, cc), "flag": FIPS_FLAG.get(cc, "🌍"),
             "total_events": int(r[0]),
-            "avg_goldstein": round(float(r[1]) if r[1] == r[1] else 0, 3),
+            "avg_goldstein": round(num(r[1]), 3),
             "quad_breakdown": {"1": int(r[2]), "2": int(r[3]), "3": int(r[4]), "4": int(r[5])},
             "conflict_ratio": round((int(r[4]) + int(r[5])) / total, 3),
-            "monthly_trend": trend["cnt"].tolist(),
+            "monthly_trend": [r["cnt"] for r in trend],
         })
 
     return {"countries": sorted(result, key=lambda x: -x["total_events"])}
@@ -422,7 +460,7 @@ async def events(
     total = con.execute(f"SELECT COUNT(*) FROM events {where}").fetchone()[0]
     offset = (page - 1) * limit
 
-    df = con.execute(f"""
+    df = _rows(con.execute(f"""
         SELECT GlobalEventID, day, Actor1Name, Actor1CountryCode,
                Actor2Name, Actor2CountryCode, EventCode, EventRootCode,
                QuadClass, GoldsteinScale, ActionGeo_CountryCode, SOURCEURL,
@@ -430,10 +468,10 @@ async def events(
         FROM events {where}
         ORDER BY day DESC, GlobalEventID DESC
         LIMIT {limit} OFFSET {offset}
-    """).df()
+    """))
 
     evs = []
-    for _, r in df.iterrows():
+    for r in df:
         evs.append({
             "id":          str(r["GlobalEventID"]),
             "date":        str(int(r["day"])),
@@ -444,10 +482,10 @@ async def events(
             "event_code":  str(r["EventCode"])          if r["EventCode"]          else "",
             "root_code":   str(r["EventRootCode"])      if r["EventRootCode"]      else "",
             "quad_class":  str(r["QuadClass"])          if r["QuadClass"]          else "",
-            "goldstein":   round(float(r["GoldsteinScale"]) if r["GoldsteinScale"] == r["GoldsteinScale"] else 0, 3),
+            "goldstein":   round(num(r["GoldsteinScale"]), 3),
             "geo_country": str(r["ActionGeo_CountryCode"]) if r["ActionGeo_CountryCode"] else "",
             "url":         str(r["SOURCEURL"])          if r["SOURCEURL"]          else "",
-            "causal_degree": int(r["causal_in_degree"]) if r["causal_in_degree"] == r["causal_in_degree"] else 0,
+            "causal_degree": int(num(r["causal_in_degree"])),
             "precursor_ids": str(r["precursor_ids"])    if r["precursor_ids"]      else "",
         })
 
@@ -458,27 +496,27 @@ async def events(
 async def heatmap():
     con = get_con()
 
-    df = con.execute("""
+    df = _rows(con.execute("""
         SELECT Actor1CountryCode AS c1, Actor2CountryCode AS c2,
                COUNT(*) AS n, AVG(GoldsteinScale) AS avg_g
         FROM events
         WHERE Actor1CountryCode IS NOT NULL AND Actor1CountryCode != ''
           AND Actor2CountryCode IS NOT NULL AND Actor2CountryCode != ''
         GROUP BY c1, c2
-    """).df()
+    """))
 
     # Build 10×10 matrix
     matrix     = [[0]   * 10 for _ in range(10)]
     gold_matrix= [[0.0] * 10 for _ in range(10)]
     idx = {c: i for i, c in enumerate(TOP10)}
 
-    for _, r in df.iterrows():
+    for r in df:
         c1 = ISO_FIPS.get(str(r["c1"]), "")
         c2 = ISO_FIPS.get(str(r["c2"]), "")
         if c1 in idx and c2 in idx:
             i, j = idx[c1], idx[c2]
             matrix[i][j]      += int(r["n"])
-            gold_matrix[i][j]  = round(float(r["avg_g"]) if r["avg_g"] == r["avg_g"] else 0, 2)
+            gold_matrix[i][j]  = round(num(r["avg_g"]), 2)
 
     return {
         "countries":       TOP10,

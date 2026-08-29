@@ -623,11 +623,11 @@ body::after {
       <div class="date-inputs">
         <div class="date-row">
           <span class="date-label">FROM</span>
-          <input type="date" class="date-input" id="date-from" value="2024-01-01" min="2024-01-01" max="2024-12-31">
+          <input type="date" class="date-input" id="date-from" value="1979-01-01" min="1979-01-01" max="2099-12-31">
         </div>
         <div class="date-row">
           <span class="date-label">TO</span>
-          <input type="date" class="date-input" id="date-to" value="2024-12-31" min="2024-01-01" max="2024-12-31">
+          <input type="date" class="date-input" id="date-to" value="2099-12-31" min="1979-01-01" max="2099-12-31">
         </div>
       </div>
     </div>
@@ -835,7 +835,7 @@ const QUAD_COLORS = { '1':'#22d3ee','2':'#10b981','3':'#f97316','4':'#ef4444' };
 const QUAD_LABELS = { '1':'Verbal Coop','2':'Material Coop','3':'Verbal Conflict','4':'Material Conflict' };
 
 const state = {
-  filters: { countries: [], quadClass: '', dateFrom: '20240101', dateTo: '20241231' },
+  filters: { countries: [], quadClass: '', dateFrom: '19790101', dateTo: '20991231' },
   explorer: { page: 1, total: 0, search: '', quad: '' },
   heatmapMode: 'count',
   charts: {},
@@ -910,9 +910,9 @@ function applyFilters() {
 function resetFilters() {
   document.querySelectorAll('.country-check').forEach(el => el.classList.add('active'));
   document.querySelectorAll('.quad-btn').forEach(b => b.classList.remove('active'));
-  $('date-from').value = '2024-01-01';
-  $('date-to').value = '2024-12-31';
-  state.filters = { countries: [], quadClass: '', dateFrom: '20240101', dateTo: '20241231' };
+  $('date-from').value = '1979-01-01';
+  $('date-to').value = '2099-12-31';
+  state.filters = { countries: [], quadClass: '', dateFrom: '19790101', dateTo: '20991231' };
   refreshCurrentTab();
 }
 
