@@ -638,8 +638,8 @@ body::after {
 .cz-trace-v { color: var(--text); text-align: right; }
 .cz-trace-d { color: var(--text-dim); font-family: var(--font); font-size: 11px; }
 .cz-fuse {
-  display: grid; grid-template-columns: 108px 58px 64px 82px; gap: 10px;
-  font-family: var(--mono); font-size: 10.5px; padding: 2px 0;
+  display: grid; grid-template-columns: 232px 48px 52px 74px; gap: 10px;
+  font-family: var(--mono); font-size: 10.5px; padding: 2px 0; align-items: baseline;
 }
 .cz-fuse-c { color: var(--text); text-align: right; }
 .cz-fuse.total { border-top: 1px solid var(--border); margin-top: 5px; padding-top: 5px; color: var(--amber); }
@@ -687,6 +687,26 @@ body::after {
   padding: 10px 13px; font-size: 11px; line-height: 1.55; color: var(--text-dim);
 }
 .cz-note b { color: var(--text-mid); font-weight: 600; }
+
+.cz-q { padding: 8px 0; border-bottom: 1px solid rgba(251,191,36,.06); }
+.cz-q:last-of-type { border-bottom: none; }
+.cz-q-head { display: flex; align-items: baseline; gap: 9px; }
+.cz-q-name { font-size: 12.5px; color: var(--text); font-weight: 600; }
+.cz-q-score { font-family: var(--mono); font-size: 12px; color: var(--text); margin-left: auto; }
+.cz-str {
+  font-family: var(--mono); font-size: 8px; letter-spacing: .1em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 2px; border: 1px solid currentColor;
+}
+.s-strong      { color: var(--emerald); }
+.s-moderate    { color: var(--cyan); }
+.s-weak        { color: var(--amber); }
+.s-very-weak   { color: var(--text-dim); }
+.s-none        { color: var(--text-dim); }
+.s-unavailable { color: var(--red); }
+.cz-q-plain { font-size: 11.5px; color: var(--text-mid); line-height: 1.5; margin-top: 4px; max-width: 82ch; }
+.cz-q-math { font-family: var(--mono); font-size: 9.5px; color: var(--text-dim); margin-top: 3px; opacity: .75; }
+.cz-fuse-q { color: var(--text-mid); font-family: var(--font); font-size: 11.5px; }
+.cz-fuse.total-pct { color: var(--amber); font-size: 13px; padding-top: 2px; }
 </style>
 </head>
 <body>
@@ -2218,18 +2238,22 @@ function czTrace(c) {
   const sign = n => (n >= 0 ? '+' : '') + n.toFixed(3);
 
   const why = t.why.map(w => `
-    <div class="cz-trace-row">
-      <span class="cz-trace-k">${CZ_BAR_KEY[w.key] || w.key}</span>
-      <span class="cz-trace-v">${w.score.toFixed(3)}</span>
-      <span class="cz-trace-d">${esc(w.detail)}</span>
+    <div class="cz-q">
+      <div class="cz-q-head">
+        <span class="cz-q-name">${esc(w.question || w.key)}</span>
+        <span class="cz-str s-${(w.strength || '').replace(' ', '-')}">${esc(w.strength || '')}</span>
+        <span class="cz-q-score">${w.score.toFixed(2)}</span>
+      </div>
+      <div class="cz-q-plain">${esc(w.plain || w.detail || '')}</div>
+      ${w.math ? `<div class="cz-q-math">${esc(w.math)}</div>` : ''}
     </div>`).join('');
 
   const terms = t.terms.map(x => `
     <div class="cz-fuse">
-      <span class="cz-trace-k">${CZ_BAR_KEY[x.key] || x.key}</span>
-      <span class="cz-trace-v">${x.score.toFixed(3)}</span>
+      <span class="cz-fuse-q">${esc(x.question || x.key)}</span>
+      <span class="cz-trace-v">${x.score.toFixed(2)}</span>
       <span class="cz-trace-v">× ${x.weight >= 0 ? '+' : ''}${x.weight.toFixed(1)}</span>
-      <span class="cz-fuse-c">= ${sign(x.contribution)}</span>
+      <span class="cz-fuse-c">${sign(x.contribution)}</span>
     </div>`).join('');
 
   const warn = t.self_pair ? `
@@ -2241,23 +2265,29 @@ function czTrace(c) {
     </div>` : '';
 
   return `
-    <div class="cz-trace-stage">Stage 2 · channel scoring</div>
+    <div class="cz-trace-stage">What the six checks found</div>
     ${why}
-    <div class="cz-trace-stage">Stage 3 · fusion</div>
+
+    <div class="cz-trace-stage">Adding it up</div>
+    <div class="cz-rule" style="margin-bottom:8px">
+      Every claim starts out assumed false. Each check then adds or subtracts,
+      according to how much that kind of evidence counts.
+    </div>
     <div class="cz-fuse">
-      <span class="cz-trace-k">intercept</span><span></span><span></span>
+      <span class="cz-fuse-q">start — assume false</span><span></span><span></span>
       <span class="cz-fuse-c">${sign(t.intercept)}</span>
     </div>
     ${terms}
     <div class="cz-fuse total">
-      <span class="cz-trace-k">z</span><span></span><span></span>
+      <span class="cz-fuse-q">total</span><span></span><span></span>
       <span class="cz-fuse-c">${sign(t.z)}</span>
     </div>
-    <div class="cz-fuse">
-      <span class="cz-trace-k">logistic(z)</span><span></span><span></span>
-      <span class="cz-fuse-c">${c.confidence.toFixed(4)}</span>
+    <div class="cz-fuse total-pct">
+      <span class="cz-fuse-q">as a percentage</span><span></span><span></span>
+      <span class="cz-fuse-c">${Math.round(c.confidence * 100)}%</span>
     </div>
-    <div class="cz-trace-stage">Stage 4 · grade rule</div>
+
+    <div class="cz-trace-stage">Why it got this grade</div>
     <div class="cz-rule">${esc(t.grade_rule)}</div>
     ${warn}`;
 }
