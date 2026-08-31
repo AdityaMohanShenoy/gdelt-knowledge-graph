@@ -1,0 +1,47 @@
+{
+  "manifest_version": "india-target-url-validated.v1",
+  "input_path": "data/working/india-2024/target_events.parquet",
+  "output_path": "data/working/india-2024/target_events_url_validated.parquet",
+  "cache_path": "data/working/india-2024/url_cache.json",
+  "generated_at": "2026-08-25T17:32:49.770989+00:00",
+  "filter": {
+    "source_field": "SOURCEURL",
+    "behavior": "keep events with a validated live source URL",
+    "dead_statuses": [
+      404,
+      410,
+      451
+    ]
+  },
+  "unique_urls": 85772,
+  "live_urls": 78914,
+  "dead_urls": 6858,
+  "input_rows": 185238,
+  "output_rows": 170860,
+  "dropped_rows": 14378,
+  "status_counts": {
+    "200": 44145,
+    "403": 23475,
+    "404": 2443,
+    "ClientResponseError": 327,
+    "500": 616,
+    "ClientConnectorDNSError": 161,
+    "ClientConnectorError": 128,
+    "410": 327,
+    "503": 61,
+    "TimeoutError": 2800,
+    "TooManyRedirects": 5,
+    "202": 20,
+    "ClientConnectorSSLError": 648,
+    "400": 12,
+    "429": 10051,
+    "526": 88,
+    "525": 4,
+    "307": 396,
+    "406": 25,
+    "401": 18,
+    "206": 3,
+    "ServerDisconnectedError": 1,
+    "ClientOSError": 18
+  }
+}

@@ -1,0 +1,1225 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A small browser for India-focused GDELT unrest target events.">
+    <title>India // Unrest Index</title>
+    <style>
+      :root {
+        --paper: #f4f1e9;
+        --paper-deep: #e8e3d8;
+        --ink: #17221e;
+        --muted: #66716b;
+        --line: #c9c7ba;
+        --vermilion: #ee6048;
+        --vermilion-dark: #b94434;
+        --moss: #5d7663;
+        --white: #fbfaf6;
+        --shadow: 0 22px 48px rgba(23, 34, 30, 0.12);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--paper);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-width: 320px;
+        margin: 0;
+        background:
+          linear-gradient(rgba(23, 34, 30, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(23, 34, 30, 0.035) 1px, transparent 1px),
+          var(--paper);
+        background-size: 32px 32px;
+      }
+
+      body::before {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        content: "";
+        background: radial-gradient(circle at 85% 8%, rgba(238, 96, 72, 0.14), transparent 24rem);
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button,
+      .file-button {
+        cursor: pointer;
+      }
+
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      .file-button:focus-within {
+        outline: 3px solid rgba(238, 96, 72, 0.55);
+        outline-offset: 3px;
+      }
+
+      .page {
+        width: min(1420px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 30px 0 44px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 44px;
+      }
+
+      .kicker,
+      .eyebrow,
+      .field-label,
+      .stat-label,
+      th,
+      .stamp,
+      .root-label,
+      .root-code,
+      .source-link,
+      .hint,
+      .counter,
+      .event-id,
+      .mono {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        letter-spacing: 0.045em;
+      }
+
+      .kicker {
+        margin: 0 0 14px;
+        color: var(--vermilion-dark);
+        font-size: 0.73rem;
+        font-weight: 750;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 620px;
+        margin-bottom: 12px;
+        font-size: clamp(2.8rem, 8vw, 7.5rem);
+        font-weight: 650;
+        letter-spacing: -0.085em;
+        line-height: 0.84;
+      }
+
+      .dek {
+        max-width: 570px;
+        margin-bottom: 0;
+        color: var(--muted);
+        font-size: 1.03rem;
+        line-height: 1.55;
+      }
+
+      .stamp {
+        flex: 0 0 auto;
+        padding: 13px 15px 12px;
+        border: 1px solid var(--ink);
+        color: var(--ink);
+        font-size: 0.7rem;
+        line-height: 1.7;
+        text-transform: uppercase;
+        transform: rotate(2deg);
+      }
+
+      .stamp strong {
+        display: block;
+        color: var(--vermilion-dark);
+        font-size: 0.9rem;
+      }
+
+      .toolbar {
+        display: grid;
+        grid-template-columns: auto minmax(160px, 0.32fr) minmax(240px, 1fr) auto;
+        align-items: end;
+        gap: 12px;
+        padding: 15px;
+        border: 1px solid var(--line);
+        background: rgba(251, 250, 246, 0.72);
+        box-shadow: 5px 5px 0 rgba(23, 34, 30, 0.08);
+      }
+
+      .mode-switch {
+        display: flex;
+        padding: 3px;
+        border: 1px solid var(--line);
+        background: var(--paper-deep);
+      }
+
+      .mode-button,
+      .nav-button {
+        border: 0;
+        color: var(--muted);
+        background: transparent;
+      }
+
+      .mode-button {
+        padding: 10px 13px;
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .mode-button.active {
+        color: var(--white);
+        background: var(--ink);
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .field-label,
+      .stat-label {
+        color: var(--muted);
+        font-size: 0.66rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      select,
+      input[type="search"] {
+        width: 100%;
+        min-height: 42px;
+        padding: 9px 11px;
+        border: 1px solid var(--line);
+        border-radius: 0;
+        color: var(--ink);
+        background: var(--white);
+      }
+
+      .file-button {
+        display: inline-flex;
+        min-height: 42px;
+        align-items: center;
+        justify-content: center;
+        padding: 0 14px;
+        border: 1px solid var(--ink);
+        color: var(--white);
+        background: var(--vermilion);
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .file-button input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+
+      .stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 28px;
+        padding: 15px 2px 23px;
+        color: var(--muted);
+      }
+
+      .stat {
+        display: grid;
+        gap: 4px;
+      }
+
+      .stat-value {
+        color: var(--ink);
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 0.86rem;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1.08fr) minmax(330px, 0.92fr);
+        gap: 16px;
+        align-items: start;
+      }
+
+      .panel {
+        border: 1px solid var(--ink);
+        background: rgba(251, 250, 246, 0.86);
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .panel-title {
+        margin: 0;
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .counter {
+        color: var(--vermilion-dark);
+        font-size: 0.7rem;
+        font-weight: 700;
+      }
+
+      .card-stage {
+        min-height: 610px;
+        padding: 28px;
+      }
+
+      .card {
+        display: grid;
+        grid-template-columns: 88px minmax(0, 1fr);
+        min-height: 470px;
+        overflow: hidden;
+        border: 1px solid var(--ink);
+        background: var(--white);
+        box-shadow: var(--shadow);
+        touch-action: pan-y;
+        user-select: none;
+        transition: transform 180ms ease, box-shadow 180ms ease;
+      }
+
+      .card.is-dragging {
+        transition: none;
+      }
+
+      .card-rail {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 18px 10px;
+        color: var(--white);
+        background: var(--vermilion);
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+      }
+
+      .root-code {
+        font-size: 3.9rem;
+        font-weight: 800;
+        letter-spacing: -0.08em;
+      }
+
+      .root-label {
+        margin-top: 22px;
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .card-body {
+        display: flex;
+        flex-direction: column;
+        padding: clamp(24px, 5vw, 54px);
+      }
+
+      .card-eyebrow {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 34px;
+      }
+
+      .eyebrow {
+        color: var(--moss);
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .event-date {
+        color: var(--vermilion-dark);
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+
+      .card h2 {
+        max-width: 600px;
+        margin-bottom: 34px;
+        font-size: clamp(1.8rem, 4vw, 3.8rem);
+        font-weight: 620;
+        letter-spacing: -0.065em;
+        line-height: 0.98;
+      }
+
+      .event-id {
+        display: block;
+        max-width: 100%;
+        overflow: hidden;
+        margin-bottom: 24px;
+        color: var(--muted);
+        font-size: 0.68rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .event-meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: auto;
+      }
+
+      .meta-box {
+        min-height: 78px;
+        padding: 12px;
+        border-top: 1px solid var(--ink);
+      }
+
+      .meta-box.full {
+        grid-column: 1 / -1;
+      }
+
+      .meta-key {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 0.64rem;
+        text-transform: uppercase;
+      }
+
+      .meta-value {
+        display: block;
+        overflow: hidden;
+        font-size: 0.97rem;
+        font-weight: 650;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .meta-value.mono {
+        font-size: 0.78rem;
+        font-weight: 500;
+      }
+
+      .source-link {
+        display: inline-block;
+        overflow: hidden;
+        color: var(--vermilion-dark);
+        font-size: 0.7rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .card-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-top: 20px;
+      }
+
+      .nav-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .nav-button {
+        width: 44px;
+        height: 40px;
+        border: 1px solid var(--ink);
+        color: var(--ink);
+        background: transparent;
+        font-size: 1.2rem;
+      }
+
+      .nav-button:hover {
+        color: var(--white);
+        background: var(--ink);
+      }
+
+      .hint {
+        color: var(--muted);
+        font-size: 0.65rem;
+        line-height: 1.5;
+        text-align: right;
+        text-transform: uppercase;
+      }
+
+      .empty {
+        display: grid;
+        min-height: 470px;
+        place-items: center;
+        padding: 30px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .empty strong {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--ink);
+        font-size: 1.3rem;
+      }
+
+      .list-panel {
+        display: none;
+        overflow: hidden;
+      }
+
+      .list-panel.visible {
+        display: block;
+      }
+
+      .list-wrap {
+        max-height: 610px;
+        overflow: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.82rem;
+      }
+
+      th,
+      td {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        color: var(--muted);
+        background: var(--paper-deep);
+        font-size: 0.61rem;
+        text-transform: uppercase;
+      }
+
+      td:first-child {
+        color: var(--vermilion-dark);
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-weight: 700;
+      }
+
+      .row-button {
+        width: 100%;
+        padding: 0;
+        border: 0;
+        color: var(--ink);
+        background: transparent;
+        text-align: left;
+      }
+
+      tr.selected td {
+        background: rgba(238, 96, 72, 0.11);
+      }
+
+      .list-id {
+        display: block;
+        max-width: 210px;
+        overflow: hidden;
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 0.72rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .list-actor {
+        max-width: 230px;
+        overflow: hidden;
+        color: var(--muted);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .preview {
+        position: sticky;
+        top: 24px;
+        padding: 22px;
+        border: 1px solid var(--line);
+        background: rgba(251, 250, 246, 0.76);
+      }
+
+      .preview h2 {
+        margin-bottom: 12px;
+        font-size: 1.55rem;
+        letter-spacing: -0.05em;
+      }
+
+      .preview-copy {
+        margin-bottom: 22px;
+        color: var(--muted);
+        font-size: 0.9rem;
+        line-height: 1.55;
+      }
+
+      .legend {
+        display: grid;
+        gap: 8px;
+        margin-top: 28px;
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 0.68rem;
+      }
+
+      .legend-dot {
+        width: 11px;
+        height: 11px;
+        background: var(--vermilion);
+      }
+
+      .status {
+        min-height: 22px;
+        margin: 12px 2px 0;
+        color: var(--vermilion-dark);
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 0.68rem;
+      }
+
+      @media (max-width: 960px) {
+        .toolbar {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .mode-switch {
+          grid-column: 1 / -1;
+        }
+
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+
+        .preview {
+          position: static;
+        }
+      }
+
+      @media (max-width: 620px) {
+        .page {
+          width: min(100% - 24px, 1420px);
+          padding-top: 18px;
+        }
+
+        .topbar {
+          display: block;
+          margin-bottom: 30px;
+        }
+
+        .stamp {
+          display: inline-block;
+          margin-top: 24px;
+        }
+
+        .toolbar {
+          grid-template-columns: 1fr;
+        }
+
+        .mode-switch {
+          grid-column: auto;
+        }
+
+        .card-stage {
+          min-height: auto;
+          padding: 12px;
+        }
+
+        .card {
+          grid-template-columns: 54px minmax(0, 1fr);
+          min-height: 560px;
+        }
+
+        .root-code {
+          font-size: 2.5rem;
+        }
+
+        .root-label {
+          font-size: 0.58rem;
+        }
+
+        .card-body {
+          padding: 25px 20px;
+        }
+
+        .card-eyebrow {
+          margin-bottom: 26px;
+        }
+
+        .card h2 {
+          font-size: 2.25rem;
+        }
+
+        .event-meta {
+          grid-template-columns: 1fr;
+        }
+
+        .meta-box.full {
+          grid-column: auto;
+        }
+
+        .card-actions {
+          align-items: flex-end;
+        }
+
+        .hint {
+          max-width: 140px;
+        }
+
+        .list-panel {
+          overflow-x: auto;
+        }
+
+        .list-wrap {
+          min-width: 660px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="topbar">
+        <div>
+          <p class="kicker">GDELT / 2024 / action location: India</p>
+          <h1>Annotation index</h1>
+          <p class="dek">One source-linked annotation unit at a time. Swipe the cards or browse the grouped records like a directory.</p>
+        </div>
+        <div class="stamp">
+          Working view
+          <strong>Source-linked units</strong>
+          14 · 18 · 19 · 20
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="Viewer controls">
+        <div class="mode-switch" role="group" aria-label="View mode">
+          <button class="mode-button active" type="button" data-mode="cards">Card stack</button>
+          <button class="mode-button" type="button" data-mode="list">File list</button>
+        </div>
+        <label class="field">
+          <span class="field-label">Root filter</span>
+          <select id="root-filter">
+            <option value="all">All target roots</option>
+            <option value="14">14 · Protest</option>
+            <option value="18">18 · Assault / violence</option>
+            <option value="19">19 · Fight / clash</option>
+            <option value="20">20 · Mass violence</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">Find a unit</span>
+          <input id="search" type="search" placeholder="Unit ID, member ID, actor, code, source URL">
+        </label>
+        <label class="file-button">
+          Load JSON
+          <input id="file-input" type="file" accept="application/json,.json">
+        </label>
+      </section>
+
+      <section class="stats" aria-live="polite">
+        <div class="stat">
+          <span class="stat-label">In view</span>
+          <span class="stat-value" id="view-count">Loading…</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Member events</span>
+          <span class="stat-value" id="current-date">—</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Data source</span>
+          <span class="stat-value" id="data-source">Waiting for JSON</span>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <div class="panel">
+          <div class="panel-head">
+            <h2 class="panel-title" id="panel-title">Annotation unit</h2>
+            <span class="counter" id="counter">0 / 0</span>
+          </div>
+          <div class="card-stage" id="card-stage"></div>
+          <div class="list-panel" id="list-panel">
+            <div class="list-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Root</th>
+                    <th>Date</th>
+                    <th>Unit ID</th>
+                    <th>Members</th>
+                    <th>Actors</th>
+                  </tr>
+                </thead>
+                <tbody id="event-list"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <aside class="preview" id="preview">
+          <p class="kicker">Reading the index</p>
+          <h2>Start with the source, then inspect its members.</h2>
+          <p class="preview-copy">Each card groups validated event rows by exact source URL and CAMEO event code. The member records remain attached so actor variants and event IDs are still visible during annotation.</p>
+          <div class="legend">
+            <div class="legend-item"><span class="legend-dot"></span> vermilion rail = target root</div>
+            <div class="legend-item"><span class="mono">← →</span> move through units</div>
+            <div class="legend-item"><span class="mono">drag</span> swipe a card left or right</div>
+          </div>
+        </aside>
+      </section>
+      <p class="status" id="status" role="status"></p>
+    </main>
+
+    <script>
+      const DATA_URL = "../data/working/india-2024/annotation_units.json";
+      const ROOT_META = {
+        "14": { label: "Protest" },
+        "18": { label: "Assault / violence" },
+        "19": { label: "Fight / clash" },
+        "20": { label: "Mass violence" }
+      };
+      const state = {
+        events: [],
+        filtered: [],
+        index: 0,
+        mode: "cards",
+        root: "all",
+        query: "",
+        source: "Waiting for JSON",
+        drag: null
+      };
+      const cardStage = document.getElementById("card-stage");
+      const listPanel = document.getElementById("list-panel");
+      const eventList = document.getElementById("event-list");
+      const preview = document.getElementById("preview");
+      const panelTitle = document.getElementById("panel-title");
+      const counter = document.getElementById("counter");
+      const viewCount = document.getElementById("view-count");
+      const currentDate = document.getElementById("current-date");
+      const dataSource = document.getElementById("data-source");
+      const status = document.getElementById("status");
+
+      function text(value, fallback) {
+        if (value === null || value === undefined || String(value).trim() === "") {
+          return fallback || "—";
+        }
+        return String(value);
+      }
+
+      function escapeHtml(value) {
+        return text(value, "").replace(/[&<>"']/g, function(character) {
+          return {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#039;"
+          }[character];
+        });
+      }
+
+      function field(event, modern, legacy, fallback) {
+        return event[modern] !== undefined ? event[modern] : text(event[legacy], fallback);
+      }
+
+      function normalizeEvent(event) {
+        const members = Array.isArray(event.members) ? event.members : [];
+        const firstMember = members[0] || event;
+        const baseVariant = {
+          actor1: field(event, "actor1", "Actor1Name", "Unspecified actor"),
+          actor1_country: field(event, "actor1_country", "Actor1CountryCode", ""),
+          actor2: field(event, "actor2", "Actor2Name", "Unspecified actor"),
+          actor2_country: field(event, "actor2_country", "Actor2CountryCode", "")
+        };
+        const actorVariants = Array.isArray(event.actor_variants) && event.actor_variants.length
+          ? event.actor_variants
+          : [baseVariant];
+        const dates = Array.isArray(event.dates) && event.dates.length
+          ? event.dates
+          : [field(event, "day", "SQLDATE", "—")];
+        const goldsteinValues = Array.isArray(event.goldstein_values)
+          ? event.goldstein_values
+          : (event.goldstein !== undefined ? [event.goldstein] : []);
+        return {
+          day: dates[0],
+          dates: dates,
+          datetime: field(event, "datetime", "DATEADDED", text(firstMember.datetime, "—")),
+          id: field(event, "unit_id", "id", field(event, "GlobalEventID", "GlobalEventID", "unknown")),
+          eventCode: field(event, "event_code", "EventCode", "—"),
+          root: field(event, "root", "EventRootCode", "—"),
+          goldstein: goldsteinValues[0],
+          goldsteinValues: goldsteinValues,
+          actor1: actorVariants[0].actor1,
+          actor1Country: actorVariants[0].actor1_country,
+          actor2: actorVariants[0].actor2,
+          actor2Country: actorVariants[0].actor2_country,
+          actorVariants: actorVariants,
+          members: members,
+          memberCount: Number(event.event_count || members.length || 1),
+          url: field(event, "source_url", "url", field(event, "SOURCEURL", "SOURCEURL", "")),
+          isUnit: Boolean(event.unit_id || event.members)
+        };
+      }
+
+      function normalizePayload(payload) {
+        const records = Array.isArray(payload)
+          ? payload
+          : (payload.units || payload.events);
+        return Array.isArray(records) ? records.map(normalizeEvent) : [];
+      }
+
+      function dateLabel(event) {
+        if (event.dates.length > 1) {
+          return dateLabel({ dates: [event.dates[0]], day: event.dates[0] }) +
+            " +" + (event.dates.length - 1) + " dates";
+        }
+        const raw = text(event.day, "");
+        if (/^[0-9]{8}$/.test(raw)) {
+          return raw.slice(0, 4) + "-" + raw.slice(4, 6) + "-" + raw.slice(6, 8);
+        }
+        return raw || text(event.datetime, "Unknown date");
+      }
+
+      function rootLabel(root) {
+        return ROOT_META[root] ? ROOT_META[root].label : "Other";
+      }
+
+      function actorLabel(name, country) {
+        const actor = text(name, "Unspecified actor");
+        const code = text(country, "");
+        return code ? actor + " · " + code : actor;
+      }
+
+      function goldsteinLabel(value) {
+        if (Array.isArray(value)) {
+          return value.map(function(item) { return goldsteinLabel(item); }).join(" / ");
+        }
+        if (value === null || value === undefined || value === "") {
+          return "Not available";
+        }
+        const number = Number(value);
+        return Number.isFinite(number) ? number.toFixed(2) : text(value);
+      }
+
+      function safeUrl(value) {
+        const url = text(value, "");
+        return /^https?:\/\//i.test(url) ? url : "";
+      }
+
+      function actorVariantLabel(event, actorNumber) {
+        const variants = event.actorVariants || [];
+        const seen = [];
+        variants.forEach(function(variant) {
+          const name = actorNumber === 1 ? variant.actor1 : variant.actor2;
+          const country = actorNumber === 1 ? variant.actor1_country : variant.actor2_country;
+          const label = actorLabel(name, country);
+          if (!seen.includes(label)) {
+            seen.push(label);
+          }
+        });
+        const visible = seen.slice(0, 3).join(" / ");
+        return visible + (seen.length > 3 ? " +" + (seen.length - 3) + " more" : "");
+      }
+
+      function searchableText(event) {
+        const members = (event.members || []).map(function(member) {
+          return [
+            member.id,
+            member.day,
+            member.actor1,
+            member.actor2
+          ].join(" ");
+        });
+        const variants = (event.actorVariants || []).map(function(variant) {
+          return [
+            variant.actor1,
+            variant.actor2,
+            variant.actor1_country,
+            variant.actor2_country
+          ].join(" ");
+        });
+        return [
+          event.id,
+          event.eventCode,
+          event.root,
+          event.url,
+          members.join(" "),
+          variants.join(" ")
+        ].join(" ").toLowerCase();
+      }
+
+      function memberIdsLabel(event) {
+        const ids = (event.members || []).map(function(member) {
+          return text(member.id, "unknown");
+        });
+        const visible = ids.slice(0, 4).join(" · ");
+        return visible + (ids.length > 4 ? " · +" + (ids.length - 4) + " more" : "");
+      }
+
+      function updateFilters(resetIndex) {
+        const query = state.query.trim().toLowerCase();
+        state.filtered = state.events.filter(function(event) {
+          const rootMatch = state.root === "all" || event.root === state.root;
+          const searchText = searchableText(event);
+          return rootMatch && (!query || searchText.includes(query));
+        });
+        if (resetIndex) {
+          state.index = 0;
+        } else {
+          state.index = Math.min(state.index, Math.max(0, state.filtered.length - 1));
+        }
+        render();
+      }
+
+      function currentEvent() {
+        return state.filtered[state.index] || null;
+      }
+
+      function eventCard(event) {
+        const url = safeUrl(event.url);
+        const source = url
+          ? '<a class="source-link" href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer">Open source ↗</a>'
+          : '<span class="source-link">No source URL</span>';
+        return '<article class="card" id="active-card">' +
+          '<div class="card-rail">' +
+            '<span class="root-code">' + escapeHtml(event.root) + '</span>' +
+            '<span class="root-label">' + escapeHtml(rootLabel(event.root)) + '</span>' +
+          '</div>' +
+          '<div class="card-body">' +
+            '<div class="card-eyebrow">' +
+              '<span class="eyebrow">CAMEO ' + escapeHtml(event.eventCode) + '</span>' +
+              '<span class="event-date">' + escapeHtml(dateLabel(event)) + '</span>' +
+            '</div>' +
+            '<h2>' + escapeHtml(rootLabel(event.root)) + '</h2>' +
+            '<span class="event-id">UNIT ID / ' + escapeHtml(event.id) + ' · ' + escapeHtml(event.memberCount) + ' MEMBER EVENTS</span>' +
+            '<div class="event-meta">' +
+              '<div class="meta-box">' +
+                '<span class="meta-key">Actor 01</span>' +
+                '<span class="meta-value">' + escapeHtml(actorVariantLabel(event, 1)) + '</span>' +
+              '</div>' +
+              '<div class="meta-box">' +
+                '<span class="meta-key">Actor 02</span>' +
+                '<span class="meta-value">' + escapeHtml(actorVariantLabel(event, 2)) + '</span>' +
+              '</div>' +
+              '<div class="meta-box">' +
+                '<span class="meta-key">Goldstein scale</span>' +
+                '<span class="meta-value mono">' + escapeHtml(goldsteinLabel(event.goldsteinValues)) + '</span>' +
+              '</div>' +
+              '<div class="meta-box">' +
+                '<span class="meta-key">Evidence</span>' +
+                source +
+              '</div>' +
+              '<div class="meta-box full">' +
+                '<span class="meta-key">Member event IDs</span>' +
+                '<span class="meta-value mono">' + escapeHtml(memberIdsLabel(event)) + '</span>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</article>';
+      }
+
+      function renderCards() {
+        const event = currentEvent();
+        if (!event) {
+          cardStage.innerHTML = '<div class="empty"><div><strong>No events in this view.</strong>Load the generated JSON or loosen the current filter.</div></div>';
+          return;
+        }
+        cardStage.innerHTML = eventCard(event) +
+          '<div class="card-actions">' +
+            '<div class="nav-actions">' +
+              '<button class="nav-button" id="previous" type="button" aria-label="Previous unit">←</button>' +
+              '<button class="nav-button" id="next" type="button" aria-label="Next unit">→</button>' +
+            '</div>' +
+            '<span class="hint">Swipe · arrow keys<br>left / right</span>' +
+          '</div>';
+        document.getElementById("previous").addEventListener("click", function() { move(-1); });
+        document.getElementById("next").addEventListener("click", function() { move(1); });
+        bindSwipe(document.getElementById("active-card"));
+      }
+
+      function renderList() {
+        const page = state.filtered.slice(Math.max(0, state.index - 20), state.index + 28);
+        eventList.innerHTML = page.map(function(event, offset) {
+          const actualIndex = Math.max(0, state.index - 20) + offset;
+          const selected = actualIndex === state.index ? " class=\"selected\"" : "";
+          return '<tr' + selected + '>' +
+            '<td>' + escapeHtml(event.root) + '</td>' +
+            '<td>' + escapeHtml(dateLabel(event)) + '</td>' +
+            '<td><button class="row-button" data-row-index="' + actualIndex + '" type="button"><span class="list-id">' + escapeHtml(event.id) + '</span></button></td>' +
+            '<td>' + escapeHtml(event.memberCount) + '</td>' +
+            '<td><div class="list-actor">' + escapeHtml(actorVariantLabel(event, 1)) + '</div><div class="list-actor">' + escapeHtml(actorVariantLabel(event, 2)) + '</div></td>' +
+          '</tr>';
+        }).join("");
+        eventList.querySelectorAll("[data-row-index]").forEach(function(button) {
+          button.addEventListener("click", function() {
+            state.index = Number(button.dataset.rowIndex);
+            render();
+          });
+        });
+      }
+
+      function render() {
+        const total = state.filtered.length;
+        const event = currentEvent();
+        viewCount.textContent = total.toLocaleString("en-IN");
+        counter.textContent = total ? (state.index + 1).toLocaleString("en-IN") + " / " + total.toLocaleString("en-IN") : "0 / 0";
+        currentDate.textContent = event ? event.memberCount.toLocaleString("en-IN") : "—";
+        dataSource.textContent = state.source;
+        panelTitle.textContent = state.mode === "cards" ? "Annotation unit" : "Unit directory";
+        cardStage.style.display = state.mode === "cards" ? "block" : "none";
+        listPanel.classList.toggle("visible", state.mode === "list");
+        preview.style.display = state.mode === "list" ? "none" : "block";
+        document.querySelectorAll("[data-mode]").forEach(function(button) {
+          button.classList.toggle("active", button.dataset.mode === state.mode);
+        });
+        renderCards();
+        if (state.mode === "list") {
+          renderList();
+        }
+      }
+
+      function move(direction) {
+        if (!state.filtered.length) {
+          return;
+        }
+        state.index = Math.max(0, Math.min(state.filtered.length - 1, state.index + direction));
+        render();
+      }
+
+      function bindSwipe(card) {
+        card.addEventListener("pointerdown", function(event) {
+          if (event.target.closest("a, button")) {
+            return;
+          }
+          state.drag = { startX: event.clientX, card: card };
+          card.classList.add("is-dragging");
+          card.setPointerCapture(event.pointerId);
+        });
+        card.addEventListener("pointermove", function(event) {
+          if (!state.drag) {
+            return;
+          }
+          const distance = event.clientX - state.drag.startX;
+          card.style.transform = "translateX(" + distance + "px) rotate(" + distance / 25 + "deg)";
+        });
+        card.addEventListener("pointerup", function(event) {
+          if (!state.drag) {
+            return;
+          }
+          const distance = event.clientX - state.drag.startX;
+          card.classList.remove("is-dragging");
+          card.style.transform = "";
+          state.drag = null;
+          if (Math.abs(distance) > 80) {
+            move(distance < 0 ? 1 : -1);
+          }
+        });
+        card.addEventListener("pointercancel", function() {
+          state.drag = null;
+          card.classList.remove("is-dragging");
+          card.style.transform = "";
+        });
+      }
+
+      function loadPayload(payload, source) {
+        state.events = normalizePayload(payload);
+        state.source = source + " · " + state.events.length.toLocaleString("en-IN") + " units";
+        status.textContent = state.events.length ? "" : "The selected JSON did not contain an events or units array.";
+        updateFilters(true);
+      }
+
+      function showLoadError(message) {
+        state.events = [];
+        state.source = "No JSON loaded";
+        status.textContent = message;
+        updateFilters(true);
+      }
+
+      document.querySelectorAll("[data-mode]").forEach(function(button) {
+        button.addEventListener("click", function() {
+          state.mode = button.dataset.mode;
+          render();
+        });
+      });
+      document.getElementById("root-filter").addEventListener("change", function(event) {
+        state.root = event.target.value;
+        updateFilters(true);
+      });
+      document.getElementById("search").addEventListener("input", function(event) {
+        state.query = event.target.value;
+        updateFilters(true);
+      });
+      document.getElementById("file-input").addEventListener("change", function(event) {
+        const file = event.target.files[0];
+        if (!file) {
+          return;
+        }
+        file.text().then(function(contents) {
+          loadPayload(JSON.parse(contents), file.name);
+        }).catch(function() {
+          showLoadError("Could not read that JSON file.");
+        });
+      });
+      document.addEventListener("keydown", function(event) {
+        const tag = document.activeElement.tagName.toLowerCase();
+        if (tag === "input" || tag === "select" || tag === "textarea") {
+          return;
+        }
+        if (state.mode === "cards" && event.key === "ArrowRight") {
+          move(1);
+        }
+        if (state.mode === "cards" && event.key === "ArrowLeft") {
+          move(-1);
+        }
+      });
+
+      fetch(DATA_URL)
+        .then(function(response) {
+          if (!response.ok) {
+            throw new Error("Target JSON is not available");
+          }
+          return response.json();
+        })
+        .then(function(payload) {
+          loadPayload(payload, "Generated target JSON");
+        })
+        .catch(function() {
+          showLoadError("Annotation JSON not found. Run the grouping command or use Load JSON.");
+        });
+      render();
+    </script>
+  </body>
+</html>
