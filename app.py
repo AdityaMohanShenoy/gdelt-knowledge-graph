@@ -538,7 +538,8 @@ async def heatmap():
 # day granularity because common codes fire nearly every day in a busy country.
 
 CAUSAL_WINDOW_DAYS = 7
-CAUSAL_FLOOR = 0.08          # below this a candidate is scored but not drawn
+CAUSAL_FLOOR = 0.08
+MIN_GROUP_EVENTS = 3          # a (day, type) group below this is too thin to score          # below this a candidate is scored but not drawn
 
 # Illustrative weights. In the real design these are fitted on the Stage 1
 # labelled decisions; there is no labelled set in this repo, so they are fixed
@@ -824,9 +825,17 @@ async def causal_score(event_id: str = "", country: str = "IN"):
         WHERE ActionGeo_CountryCode = '{safe(cc)}'
           AND day >= {lo} AND day < {t_day}
         GROUP BY day, rc
-        HAVING COUNT(*) >= 3
         ORDER BY day DESC, rc
     """))
+
+    raw_events = int(num(con.execute(f"""
+        SELECT COUNT(*) FROM events
+        WHERE ActionGeo_CountryCode = '{safe(cc)}'
+          AND day >= {lo} AND day < {t_day}
+    """).fetchone()[0]))
+
+    n_groups = len(cands)
+    cands = [r for r in cands if int(num(r["n"])) >= MIN_GROUP_EVENTS]
 
     midx = _matrix_index(_causal_matrix_rows(con, cc))
 
@@ -868,17 +877,50 @@ async def causal_score(event_id: str = "", country: str = "IN"):
         z = CAUSAL_INTERCEPT + sum(CAUSAL_W[k] * ch[k] for k in CAUSAL_W)
         conf = _logistic(z)
 
+        # Every intermediate, so a reader can re-derive the number by hand
+        # instead of taking the endpoint's word for it.
+        lift = num(stat.get("lift"))
+        why = [
+            {"key": "documented", "score": round(documented, 3),
+             "detail": (f"precursor group ({c_day}, {c_rc}) is in the pipeline's own links"
+                        if documented >= 0.5 else
+                        f"({c_day}, {c_rc}) not among the recorded precursors")},
+            {"key": "corroboration", "score": round(corroboration, 3),
+             "detail": f"log1p({domains}) / log1p(40) — {domains} distinct source domains"},
+            {"key": "prior", "score": round(prior, 3),
+             "detail": (f"lift {lift:.3f} → (lift − 1) / 7 · "
+                        f"{int(num(stat.get('cause_days')))} cause spike days, "
+                        f"{int(num(stat.get('effect_days')))} effect spike days")},
+            {"key": "contrastive", "score": round(contrastive, 3),
+             "detail": f"0.75 × sufficiency {suff:.3f} + 0.25 × necessity {nec:.3f}"},
+            {"key": "actors", "score": round(actors, 3),
+             "detail": (f"{int(num(r['actor_hits']))} of {n_events} events name a target token"
+                        + (f" {probe}" if probe else " (target has no usable tokens)"))},
+            {"key": "contradiction", "score": 0.0,
+             "detail": "no article corpus in this build — reported unavailable, not scored 0"},
+        ]
+        terms = [{"key": k, "score": ch[k], "weight": CAUSAL_W[k],
+                  "contribution": round(CAUSAL_W[k] * ch[k], 3)} for k in CAUSAL_W]
+
         pattern_strength = (prior + contrastive + actors) / 3.0
         if documented >= 0.5 and corroboration >= 0.5:
             grade = "confirmed"
+            rule = "documented ≥ 0.5 AND corroboration ≥ 0.5"
         elif documented >= 0.5:
             grade = "reported"
+            rule = (f"documented ≥ 0.5, but corroboration {corroboration:.3f} < 0.5 "
+                    f"— one bar short of confirmed")
         elif pattern_strength >= 0.45 and suff >= 0.30:
             grade = "pattern"
+            rule = (f"not documented, but pattern strength {pattern_strength:.3f} ≥ 0.45 "
+                    f"and sufficiency {suff:.3f} ≥ 0.30")
         elif conf >= CAUSAL_FLOOR:
             grade = "weak"
+            rule = (f"pattern strength {pattern_strength:.3f} below 0.45 "
+                    f"— above the {CAUSAL_FLOOR} floor but nothing carries it")
         else:
             grade = "dropped"
+            rule = f"confidence below the {CAUSAL_FLOOR} floor"
 
         scored.append({
             "group_id":    f"{c_day}-{c_rc}",
@@ -898,6 +940,17 @@ async def causal_score(event_id: str = "", country: str = "IN"):
             "sufficiency": round(num(stat.get("sufficiency")), 3),
             "necessity":   round(num(stat.get("necessity")), 3),
             "lift":        round(num(stat.get("lift")), 3),
+            "trace": {
+                "why":        why,
+                "terms":      terms,
+                "intercept":  CAUSAL_INTERCEPT,
+                "z":          round(z, 3),
+                "grade_rule": rule,
+                # Same code both sides: cause and effect spike days are the same
+                # set, so sufficiency and necessity are structurally identical
+                # and this channel measures recurrence, not a distinct relation.
+                "self_pair":  c_rc == t_rc,
+            },
         })
 
     # The same event type recurring on five different days is one candidate
@@ -923,6 +976,15 @@ async def causal_score(event_id: str = "", country: str = "IN"):
     return {
         "country":    cc,
         "target":     target,
+        "retrieval": {
+            "window_from": lo, "window_to": t_day,
+            "raw_events":  raw_events,
+            "groups":      n_groups,
+            "kept":        len(cands),
+            "deduped":     len(scored),
+            "min_group":   MIN_GROUP_EVENTS,
+            "actor_probe": probe,
+        },
         "channels":   CHANNEL_META,
         "weights":    CAUSAL_W,
         "intercept":  CAUSAL_INTERCEPT,

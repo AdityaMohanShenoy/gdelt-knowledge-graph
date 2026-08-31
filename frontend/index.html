@@ -612,10 +612,47 @@ body::after {
 
 .cz-cands { display: flex; flex-direction: column; gap: 5px; }
 .cz-cand {
-  display: grid; grid-template-columns: 212px 1fr 118px 76px; gap: 12px; align-items: center;
   border: 1px solid var(--border); border-left-width: 2px; border-radius: 3px;
-  padding: 9px 12px; background: var(--surf1);
+  background: var(--surf1); overflow: hidden;
 }
+.cz-cand-head {
+  display: grid; grid-template-columns: 212px 1fr 118px 76px 16px; gap: 12px; align-items: center;
+  padding: 9px 12px; width: 100%; background: transparent; border: none;
+  font-family: var(--font); color: inherit; text-align: left; cursor: pointer;
+}
+.cz-cand-head:hover { background: var(--surf2); }
+.cz-cand-head:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.cz-caret { font-size: 10px; color: var(--text-dim); transition: transform .15s; }
+.cz-cand.open .cz-caret { transform: rotate(90deg); }
+.cz-cand.open { border-color: var(--border-hi); }
+
+.cz-trace { border-top: 1px dashed var(--border); padding: 12px 14px 14px; background: var(--bg); }
+.cz-trace-stage { font-family: var(--mono); font-size: 8.5px; letter-spacing: .13em;
+  color: var(--amber); text-transform: uppercase; margin: 12px 0 6px; }
+.cz-trace-stage:first-child { margin-top: 0; }
+.cz-trace-row {
+  display: grid; grid-template-columns: 108px 58px 1fr; gap: 10px;
+  font-family: var(--mono); font-size: 10.5px; padding: 3px 0; align-items: baseline;
+}
+.cz-trace-k { color: var(--text-mid); }
+.cz-trace-v { color: var(--text); text-align: right; }
+.cz-trace-d { color: var(--text-dim); font-family: var(--font); font-size: 11px; }
+.cz-fuse {
+  display: grid; grid-template-columns: 108px 58px 64px 82px; gap: 10px;
+  font-family: var(--mono); font-size: 10.5px; padding: 2px 0;
+}
+.cz-fuse-c { color: var(--text); text-align: right; }
+.cz-fuse.total { border-top: 1px solid var(--border); margin-top: 5px; padding-top: 5px; color: var(--amber); }
+.cz-rule { font-size: 11px; color: var(--text-mid); line-height: 1.5; }
+.cz-warn {
+  margin-top: 10px; border-left: 2px solid var(--red); padding: 6px 10px;
+  font-size: 10.5px; color: var(--text-dim); line-height: 1.5; background: rgba(239,68,68,.05);
+}
+.cz-funnel { display: flex; gap: 0; align-items: stretch; margin: 8px 0 0; flex-wrap: wrap; }
+.cz-funnel-step { padding: 7px 14px 7px 12px; border: 1px solid var(--border); border-right: none; background: var(--surf1); }
+.cz-funnel-step:last-child { border-right: 1px solid var(--border-hi); }
+.cz-funnel-n { font-family: var(--mono); font-size: 15px; color: var(--amber); }
+.cz-funnel-l { font-size: 9px; color: var(--text-dim); letter-spacing: .08em; text-transform: uppercase; margin-top: 2px; }
 .cz-cand.g-confirmed { border-left-color: var(--emerald); }
 .cz-cand.g-reported  { border-left-color: var(--cyan); }
 .cz-cand.g-pattern   { border-left-color: var(--purple); }
@@ -2083,6 +2120,7 @@ async function selectCausalSeed(id) {
 
 function renderCausal(d) {
   const t = d.target;
+  const r = d.retrieval || { raw_events: 0, groups: 0, kept: 0, deduped: 0, min_group: 3 };
   const order = ['documented','corroboration','prior','contrastive','actors','contradiction'];
 
   const channels = d.channels.map(c => `
@@ -2104,13 +2142,17 @@ function renderCausal(d) {
       </div>`).join('');
     return `
       <div class="cz-cand g-${c.grade}">
-        <div>
-          <div class="cz-cand-type">${esc(c.root_label)}</div>
-          <div class="cz-cand-lag">${c.lag_days}d earlier &nbsp;·&nbsp; ${fmt(c.event_count)} ev &nbsp;·&nbsp; ${c.domains} outlets</div>
-        </div>
-        <div class="cz-bars">${bars}</div>
-        <div class="cz-grade gc-${c.grade}">${CZ_GRADE_LABEL[c.grade]}</div>
-        <div class="cz-conf">${Math.round(c.confidence*100)}%<small>CONF</small></div>
+        <button class="cz-cand-head" type="button" aria-expanded="false">
+          <span>
+            <span class="cz-cand-type">${esc(c.root_label)}</span>
+            <span class="cz-cand-lag">${c.lag_days}d earlier &nbsp;·&nbsp; ${fmt(c.event_count)} ev &nbsp;·&nbsp; ${c.domains} outlets</span>
+          </span>
+          <span class="cz-bars">${bars}</span>
+          <span class="cz-grade gc-${c.grade}">${CZ_GRADE_LABEL[c.grade]}</span>
+          <span class="cz-conf">${Math.round(c.confidence*100)}%<small>CONF</small></span>
+          <span class="cz-caret">▶</span>
+        </button>
+        <div class="cz-trace" hidden>${czTrace(c)}</div>
       </div>`;
   }).join('');
 
@@ -2128,6 +2170,18 @@ function renderCausal(d) {
 
     <div class="cz-sec">Evidence channels</div>
     <div class="cz-chan-grid">${channels}</div>
+
+    <div class="cz-sec">Retrieval — how ${fmt(r.raw_events)} events became ${r.deduped} candidates</div>
+    <div class="cz-funnel">
+      <div class="cz-funnel-step"><div class="cz-funnel-n">${fmt(r.raw_events)}</div>
+        <div class="cz-funnel-l">events in window</div></div>
+      <div class="cz-funnel-step"><div class="cz-funnel-n">${r.groups}</div>
+        <div class="cz-funnel-l">day + type groups</div></div>
+      <div class="cz-funnel-step"><div class="cz-funnel-n">${r.kept}</div>
+        <div class="cz-funnel-l">≥ ${r.min_group} events</div></div>
+      <div class="cz-funnel-step"><div class="cz-funnel-n">${r.deduped}</div>
+        <div class="cz-funnel-l">best lag per type</div></div>
+    </div>
 
     <div class="cz-sec">Candidate causes in the previous ${d.window_days} days —
       ${gc.confirmed || 0} confirmed · ${gc.reported || 0} reported ·
@@ -2152,7 +2206,72 @@ function renderCausal(d) {
       is calibrated. Presence is measured on <b>spike days</b> — a day whose count for
       an event type exceeds its own 75th percentile — because at day granularity
       common types fire nearly every day and raw co-occurrence says nothing.
+      <b>Click any candidate</b> to see its full derivation and re-check the arithmetic.
     </div>`;
+
+  wireCausalRows();
+}
+
+function czTrace(c) {
+  const t = c.trace;
+  if (!t) return '';
+  const sign = n => (n >= 0 ? '+' : '') + n.toFixed(3);
+
+  const why = t.why.map(w => `
+    <div class="cz-trace-row">
+      <span class="cz-trace-k">${CZ_BAR_KEY[w.key] || w.key}</span>
+      <span class="cz-trace-v">${w.score.toFixed(3)}</span>
+      <span class="cz-trace-d">${esc(w.detail)}</span>
+    </div>`).join('');
+
+  const terms = t.terms.map(x => `
+    <div class="cz-fuse">
+      <span class="cz-trace-k">${CZ_BAR_KEY[x.key] || x.key}</span>
+      <span class="cz-trace-v">${x.score.toFixed(3)}</span>
+      <span class="cz-trace-v">× ${x.weight >= 0 ? '+' : ''}${x.weight.toFixed(1)}</span>
+      <span class="cz-fuse-c">= ${sign(x.contribution)}</span>
+    </div>`).join('');
+
+  const warn = t.self_pair ? `
+    <div class="cz-warn">
+      Same event type on both sides. Cause and effect spike days are the same set,
+      so sufficiency and necessity come out identical — this channel is measuring
+      recurrence here, not a distinct relation, and carries less independent
+      weight than the number suggests.
+    </div>` : '';
+
+  return `
+    <div class="cz-trace-stage">Stage 2 · channel scoring</div>
+    ${why}
+    <div class="cz-trace-stage">Stage 3 · fusion</div>
+    <div class="cz-fuse">
+      <span class="cz-trace-k">intercept</span><span></span><span></span>
+      <span class="cz-fuse-c">${sign(t.intercept)}</span>
+    </div>
+    ${terms}
+    <div class="cz-fuse total">
+      <span class="cz-trace-k">z</span><span></span><span></span>
+      <span class="cz-fuse-c">${sign(t.z)}</span>
+    </div>
+    <div class="cz-fuse">
+      <span class="cz-trace-k">logistic(z)</span><span></span><span></span>
+      <span class="cz-fuse-c">${c.confidence.toFixed(4)}</span>
+    </div>
+    <div class="cz-trace-stage">Stage 4 · grade rule</div>
+    <div class="cz-rule">${esc(t.grade_rule)}</div>
+    ${warn}`;
+}
+
+function wireCausalRows() {
+  document.querySelectorAll('.cz-cand-head').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const card  = btn.closest('.cz-cand');
+      const panel = card.querySelector('.cz-trace');
+      const open  = card.classList.toggle('open');
+      panel.hidden = !open;
+      btn.setAttribute('aria-expanded', String(open));
+    });
+  });
 }
 
 function fmtDay(s) {
