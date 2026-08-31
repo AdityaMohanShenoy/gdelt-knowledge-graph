@@ -588,6 +588,22 @@ _STOP_ACTORS = {
 }
 
 
+def _strength(v: float, available: bool = True) -> str:
+    """Turn a 0-1 score into a word. A reader should not have to know whether
+    0.43 is good."""
+    if not available:
+        return "unavailable"
+    if v >= 0.70:
+        return "strong"
+    if v >= 0.40:
+        return "moderate"
+    if v >= 0.15:
+        return "weak"
+    if v > 0:
+        return "very weak"
+    return "none"
+
+
 def _logistic(z: float) -> float:
     if z < -60:
         return 0.0
@@ -919,49 +935,95 @@ async def causal_score(event_id: str = "", country: str = "IN"):
         # Every intermediate, so a reader can re-derive the number by hand
         # instead of taking the endpoint's word for it.
         lift = num(stat.get("lift"))
+        c_name, t_name = ROOT_LABEL.get(c_rc, c_rc), ROOT_LABEL.get(t_rc, t_rc)
+
+        if probe:
+            actor_plain = " ".join(
+                f'"{t}" appears in {tok_idf[t]["share"]*100:.1f}% of all events, so it is '
+                f'{"a distinctive" if tok_idf[t]["share"] < 0.01 else "a fairly common"} name — '
+                f'{hits[t]} of the {n_events} events here mention it.'
+                for t in probe)
+        else:
+            actor_plain = ("None of the target's actor names are distinctive enough "
+                           "to be worth matching on.")
+
         why = [
-            {"key": "documented", "score": round(documented, 3),
-             "detail": (f"precursor group ({c_day}, {c_rc}) is in the pipeline's own links"
-                        if documented >= 0.5 else
-                        f"({c_day}, {c_rc}) not among the recorded precursors")},
-            {"key": "corroboration", "score": round(corroboration, 3),
-             "detail": f"log1p({domains}) / log1p(40) — {domains} distinct source domains"},
-            {"key": "prior", "score": round(prior, 3),
-             "detail": (f"lift {lift:.3f} → (lift − 1) / 7 · "
-                        f"{int(num(stat.get('cause_days')))} cause spike days, "
-                        f"{int(num(stat.get('effect_days')))} effect spike days")},
-            {"key": "contrastive", "score": round(contrastive, 3),
-             "detail": f"0.75 × sufficiency {suff:.3f} + 0.25 × necessity {nec:.3f}"},
-            {"key": "actors", "score": round(actors, 3),
-             "detail": (" · ".join(
-                 f"{t} idf {tok_idf[t]['idf']:.2f} (in {tok_idf[t]['share']*100:.2f}% "
-                 f"of events) matched {hits[t]}/{n_events}" for t in probe)
-                 if probe else "target has no token rare enough to discriminate")},
-            {"key": "contradiction", "score": 0.0,
-             "detail": "no article corpus in this build — reported unavailable, not scored 0"},
+            {"key": "documented", "question": "Did a reporter say so?",
+             "score": round(documented, 3), "strength": _strength(documented),
+             "plain": ("Your existing pipeline already recorded this as a cause of the "
+                       "target event." if documented >= 0.5 else
+                       "The pipeline never linked anything of this type on this day to "
+                       "the target event."),
+             "math": f"precursor group ({c_day}, {c_rc}) "
+                     f"{'matched' if documented >= 0.5 else 'not matched'}"},
+
+            {"key": "corroboration", "question": "How many outlets carried it?",
+             "score": round(corroboration, 3), "strength": _strength(corroboration),
+             "plain": f"{domains} different news sites reported events in this group. "
+                      f"Around 40 sites would count as full marks.",
+             "math": f"log1p({domains}) / log1p(40)"},
+
+            {"key": "prior", "question": "Is this the usual pattern?",
+             "score": round(prior, 3), "strength": _strength(prior),
+             "plain": (f"After one busy {c_name} day, another is {lift:.1f}× more likely "
+                       f"than on an average day." if c_rc == t_rc else
+                       f"After a busy {c_name} day, a busy {t_name} day is "
+                       f"{lift:.1f}× more likely than on an average day."),
+             "math": f"lift {lift:.3f}, rescaled as (lift − 1) / 7"},
+
+            {"key": "contrastive", "question": "What happened the other times?",
+             "score": round(contrastive, 3), "strength": _strength(contrastive),
+             "plain": (f"Of all the busy {c_name} days, {suff*100:.0f}% were followed by "
+                       f"another within a week — and {nec*100:.0f}% had one before them. "
+                       f"Same event type both sides, so these two figures are the same "
+                       f"measurement." if c_rc == t_rc else
+                       f"Of all the busy {c_name} days, {suff*100:.0f}% were followed by a "
+                       f"busy {t_name} day within a week. Looking the other way, "
+                       f"{nec*100:.0f}% of busy {t_name} days had one before them."),
+             "math": f"0.75 × sufficiency {suff:.3f} + 0.25 × necessity {nec:.3f}"},
+
+            {"key": "actors", "question": "Are the same people involved?",
+             "score": round(actors, 3), "strength": _strength(actors),
+             "plain": actor_plain,
+             "math": (" · ".join(f"{t} idf {tok_idf[t]['idf']:.2f} × {hits[t]}/{n_events}"
+                                 for t in probe) if probe else "no usable tokens")},
+
+            {"key": "contradiction", "question": "Did anyone deny it?",
+             "score": 0.0, "strength": _strength(0.0, available=False),
+             "plain": "This build has no article text, so we cannot check whether anyone "
+                      "denied the link. Left unscored rather than counted as a zero.",
+             "math": "—"},
         ]
-        terms = [{"key": k, "score": ch[k], "weight": CAUSAL_W[k],
+        qmap = {w["key"]: w["question"] for w in why}
+        terms = [{"key": k, "question": qmap[k], "score": ch[k], "weight": CAUSAL_W[k],
                   "contribution": round(CAUSAL_W[k] * ch[k], 3)} for k in CAUSAL_W]
 
         pattern_strength = (prior + contrastive + actors) / 3.0
         if documented >= 0.5 and corroboration >= 0.5:
             grade = "confirmed"
-            rule = "documented ≥ 0.5 AND corroboration ≥ 0.5"
+            rule = (f"The pipeline recorded this link and {domains} separate outlets "
+                    f"carried it. Both bars cleared, so this is as strong as the "
+                    f"evidence here gets.")
         elif documented >= 0.5:
             grade = "reported"
-            rule = (f"documented ≥ 0.5, but corroboration {corroboration:.3f} < 0.5 "
-                    f"— one bar short of confirmed")
+            rule = (f"The pipeline recorded this link, but only {domains} outlets carried "
+                    f"it. Confirmed needs broader coverage — around 9 outlets at this "
+                    f"scale — so it stops one step short.")
         elif pattern_strength >= 0.45 and suff >= 0.30:
             grade = "pattern"
-            rule = (f"not documented, but pattern strength {pattern_strength:.3f} ≥ 0.45 "
-                    f"and sufficiency {suff:.3f} ≥ 0.30")
+            rule = (f"Nobody recorded this link, but the data behind it is consistent: "
+                    f"{suff*100:.0f}% of the time this cause showed up, the effect "
+                    f"followed. Strong enough to keep, as a pattern rather than a "
+                    f"documented fact.")
         elif conf >= CAUSAL_FLOOR:
             grade = "weak"
-            rule = (f"pattern strength {pattern_strength:.3f} below 0.45 "
-                    f"— above the {CAUSAL_FLOOR} floor but nothing carries it")
+            rule = ("Nobody recorded this link, and no single check is strong enough to "
+                    "carry it on its own. Kept on the list, but nothing here would "
+                    "survive a challenge.")
         else:
             grade = "dropped"
-            rule = f"confidence below the {CAUSAL_FLOOR} floor"
+            rule = ("Every check came back near zero. Not shown as a cause, but kept "
+                    "with its scores as a training example.")
 
         scored.append({
             "group_id":    f"{c_day}-{c_rc}",
