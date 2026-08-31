@@ -561,6 +561,95 @@ body::after {
   width: 140px; height: 6px; border-radius: 3px;
   background: linear-gradient(90deg, var(--q4), #2a1a1a, #1a2a1a, var(--q2));
 }
+
+/* ── Causal Evidence tab ── */
+#panel-causal { padding: 0; flex-direction: row; gap: 0; overflow: hidden; }
+.cz-side {
+  width: 268px; flex-shrink: 0; border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; background: var(--surf1);
+}
+.cz-side-head { padding: 14px 14px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.cz-label { font-size: 9px; letter-spacing: .14em; color: var(--text-dim); text-transform: uppercase; display: block; margin-bottom: 7px; }
+.cz-select {
+  width: 100%; padding: 6px 8px; background: var(--surf2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 3px;
+  font-family: var(--font); font-size: 12px; cursor: pointer;
+}
+.cz-select:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.cz-seeds { flex: 1; overflow-y: auto; padding: 8px; }
+.cz-seed {
+  padding: 9px 10px; border: 1px solid transparent; border-left: 2px solid var(--surf3);
+  border-radius: 3px; cursor: pointer; margin-bottom: 4px; transition: all .13s; background: transparent;
+  width: 100%; text-align: left; font-family: var(--font); color: inherit;
+}
+.cz-seed:hover { background: var(--surf2); border-left-color: var(--amber-dim); }
+.cz-seed.active { background: var(--surf3); border-color: var(--border-hi); border-left-color: var(--amber); }
+.cz-seed:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.cz-seed-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.cz-seed-type { font-size: 12px; color: var(--text); font-weight: 600; }
+.cz-seed-date { font-family: var(--mono); font-size: 9.5px; color: var(--text-dim); flex-shrink: 0; }
+.cz-seed-actors { font-size: 10.5px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cz-main { flex: 1; overflow-y: auto; padding: 18px 20px 28px; }
+.cz-target {
+  border: 1px solid var(--border-hi); border-radius: 4px;
+  background: linear-gradient(180deg, var(--surf2), var(--surf1)); padding: 14px 16px; margin-bottom: 16px;
+}
+.cz-target-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.cz-target-title { font-size: 18px; font-weight: 700; color: var(--amber); }
+.cz-target-meta { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); }
+.cz-target-actors { font-size: 12px; color: var(--text-mid); margin-top: 6px; }
+
+.cz-sec { font-size: 9.5px; letter-spacing: .14em; color: var(--text-dim); text-transform: uppercase; margin: 18px 0 9px; }
+.cz-chan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 7px; }
+.cz-chan {
+  border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; background: var(--surf1);
+}
+.cz-chan.off { opacity: .5; border-style: dashed; }
+.cz-chan-name { font-size: 11.5px; color: var(--text); font-weight: 600; }
+.cz-chan-note { font-size: 9.5px; color: var(--text-dim); margin-top: 3px; line-height: 1.35; }
+.cz-chan-off-tag { font-family: var(--mono); font-size: 8.5px; color: var(--red); letter-spacing: .08em; }
+
+.cz-cands { display: flex; flex-direction: column; gap: 5px; }
+.cz-cand {
+  display: grid; grid-template-columns: 212px 1fr 118px 76px; gap: 12px; align-items: center;
+  border: 1px solid var(--border); border-left-width: 2px; border-radius: 3px;
+  padding: 9px 12px; background: var(--surf1);
+}
+.cz-cand.g-confirmed { border-left-color: var(--emerald); }
+.cz-cand.g-reported  { border-left-color: var(--cyan); }
+.cz-cand.g-pattern   { border-left-color: var(--purple); }
+.cz-cand.g-weak      { border-left-color: var(--surf3); opacity: .72; }
+.cz-cand-type { font-size: 12.5px; color: var(--text); font-weight: 600; }
+.cz-cand-lag { font-family: var(--mono); font-size: 9.5px; color: var(--text-dim); margin-top: 2px; }
+.cz-bars { display: flex; gap: 5px; }
+.cz-bar-wrap { flex: 1; }
+.cz-bar-track { height: 5px; border-radius: 2px; background: var(--surf3); overflow: hidden; }
+.cz-bar-fill { height: 100%; border-radius: 2px; }
+.cz-bar-key { font-family: var(--mono); font-size: 8px; color: var(--text-dim); margin-top: 3px; letter-spacing: .04em; }
+.cz-grade {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .09em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 2px; border: 1px solid currentColor; text-align: center; white-space: nowrap;
+}
+.gc-confirmed { color: var(--emerald); }
+.gc-reported  { color: var(--cyan); }
+.gc-pattern   { color: var(--purple); }
+.gc-weak      { color: var(--text-dim); }
+.cz-conf { font-family: var(--mono); font-size: 17px; text-align: right; color: var(--text); }
+.cz-conf small { font-size: 9px; color: var(--text-dim); display: block; letter-spacing: .1em; }
+
+.cz-coverage {
+  display: flex; align-items: center; gap: 12px; margin: 16px 0 0;
+  border: 1px solid var(--border); border-radius: 3px; padding: 11px 14px; background: var(--surf1);
+}
+.cz-cov-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--surf3); overflow: hidden; }
+.cz-cov-fill { height: 100%; background: linear-gradient(90deg, var(--amber-dim), var(--amber)); border-radius: 3px; }
+.cz-cov-text { font-size: 11.5px; color: var(--text-mid); }
+.cz-note {
+  margin-top: 14px; border: 1px dashed var(--border); border-radius: 3px;
+  padding: 10px 13px; font-size: 11px; line-height: 1.55; color: var(--text-dim);
+}
+.cz-note b { color: var(--text-mid); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -648,6 +737,7 @@ body::after {
       <button class="tab-btn" data-tab="country"><span class="tab-icon">◉</span> Country Analysis</button>
       <button class="tab-btn" data-tab="explorer"><span class="tab-icon">≡</span> Event Explorer</button>
       <button class="tab-btn" data-tab="heatmap"><span class="tab-icon">⊞</span> Heatmap</button>
+      <button class="tab-btn" data-tab="causal"><span class="tab-icon">⟐</span> Causal Evidence</button>
     </nav>
 
     <!-- PANELS -->
@@ -804,6 +894,26 @@ body::after {
         </div>
       </div>
 
+
+      <!-- ── CAUSAL EVIDENCE ── -->
+      <div class="panel" id="panel-causal">
+        <aside class="cz-side">
+          <div class="cz-side-head">
+            <span class="cz-label">Country</span>
+            <select class="cz-select" id="cz-country" aria-label="Country"></select>
+          </div>
+          <div class="cz-seeds" id="cz-seed-list">
+            <div class="loading-state"><div class="loading-spinner"></div></div>
+          </div>
+        </aside>
+        <section class="cz-main" id="cz-main">
+          <div class="loading-state">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Scoring candidate causes…</div>
+          </div>
+        </section>
+      </div>
+
     </div><!-- /panels -->
   </div><!-- /content -->
 </div><!-- /app -->
@@ -954,6 +1064,7 @@ function loadTab(tab) {
   else if (tab === 'country') loadCountry();
   else if (tab === 'explorer') loadExplorer();
   else if (tab === 'heatmap') loadHeatmap();
+  else if (tab === 'causal') loadCausal();
 }
 
 /* ══════════════════════════════════════════
@@ -1886,6 +1997,173 @@ async function init() {
 }
 
 init();
+
+/* ══════════════════════════════════════════
+   TAB 6 · CAUSAL EVIDENCE
+   Scores every candidate cause of one event across six evidence channels,
+   then grades the link by WHAT KIND of evidence supports it -- separately
+   from HOW MUCH. Two channels need article text the repo does not ship,
+   and report as unavailable rather than being scored zero.
+══════════════════════════════════════════ */
+const CZ_BAR_COLOR = {
+  documented:    'var(--cyan)',
+  corroboration: 'var(--cyan)',
+  prior:         'var(--purple)',
+  contrastive:   'var(--purple)',
+  actors:        'var(--purple)',
+  contradiction: 'var(--red)',
+};
+const CZ_BAR_KEY = {
+  documented: 'STATED', corroboration: 'OUTLETS', prior: 'PATTERN',
+  contrastive: 'OTHERS', actors: 'ACTORS', contradiction: 'DENIED',
+};
+const CZ_GRADE_LABEL = {
+  confirmed: 'Confirmed', reported: 'Reported',
+  pattern: 'Pattern-based', weak: 'Weak', dropped: 'Dropped',
+};
+
+let _czCountry = 'IN';
+let _czSeedId  = null;
+
+async function loadCausal() {
+  const sel = $('cz-country');
+  if (!sel.options.length) {
+    sel.innerHTML = Object.entries(COUNTRIES)
+      .map(([cc, o]) => `<option value="${cc}">${o.name}</option>`).join('');
+    sel.value = _czCountry;
+    sel.addEventListener('change', () => {
+      _czCountry = sel.value; _czSeedId = null; loadCausalSeeds();
+    });
+  }
+  await loadCausalSeeds();
+}
+
+async function loadCausalSeeds() {
+  const list = $('cz-seed-list');
+  list.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div></div>';
+  const d = await api(`/api/causal/seeds?country=${encodeURIComponent(_czCountry)}`);
+  if (!d || !d.seeds.length) {
+    list.innerHTML = '<div class="cz-note">No target events with recorded precursors for this country.</div>';
+    $('cz-main').innerHTML = '';
+    return;
+  }
+  list.innerHTML = d.seeds.map(s => `
+    <button class="cz-seed" data-id="${s.id}" type="button">
+      <span class="cz-seed-top">
+        <span class="cz-seed-type">${esc(s.root_label)}</span>
+        <span class="cz-seed-date">${fmtDay(s.date)}</span>
+      </span>
+      <span class="cz-seed-actors">${esc(s.actor1 || '—')} → ${esc(s.actor2 || '—')}</span>
+    </button>`).join('');
+
+  list.querySelectorAll('.cz-seed').forEach(b => {
+    b.addEventListener('click', () => selectCausalSeed(b.dataset.id));
+  });
+  selectCausalSeed(_czSeedId && d.seeds.some(s => s.id === _czSeedId)
+    ? _czSeedId : d.seeds[0].id);
+}
+
+async function selectCausalSeed(id) {
+  _czSeedId = id;
+  document.querySelectorAll('.cz-seed').forEach(b =>
+    b.classList.toggle('active', b.dataset.id === id));
+
+  const main = $('cz-main');
+  main.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div>' +
+                   '<div class="loading-text">Scoring candidate causes…</div></div>';
+
+  const d = await api(`/api/causal/score?event_id=${encodeURIComponent(id)}` +
+                      `&country=${encodeURIComponent(_czCountry)}`);
+  if (!d || !d.target) {
+    main.innerHTML = '<div class="cz-note">Could not score this event.</div>';
+    return;
+  }
+  renderCausal(d);
+}
+
+function renderCausal(d) {
+  const t = d.target;
+  const order = ['documented','corroboration','prior','contrastive','actors','contradiction'];
+
+  const channels = d.channels.map(c => `
+    <div class="cz-chan${c.available ? '' : ' off'}">
+      <div class="cz-chan-name">${esc(c.label)}</div>
+      <div class="cz-chan-note">${esc(c.note)}</div>
+      ${c.available ? '' : '<div class="cz-chan-off-tag">UNAVAILABLE</div>'}
+    </div>`).join('');
+
+  const shown = d.candidates.filter(c => c.grade !== 'dropped');
+  const cands = shown.map(c => {
+    const bars = order.map(k => `
+      <div class="cz-bar-wrap" title="${CZ_BAR_KEY[k]}: ${c.channels[k]}">
+        <div class="cz-bar-track">
+          <div class="cz-bar-fill" style="width:${Math.round(c.channels[k]*100)}%;
+               background:${CZ_BAR_COLOR[k]}"></div>
+        </div>
+        <div class="cz-bar-key">${CZ_BAR_KEY[k]}</div>
+      </div>`).join('');
+    return `
+      <div class="cz-cand g-${c.grade}">
+        <div>
+          <div class="cz-cand-type">${esc(c.root_label)}</div>
+          <div class="cz-cand-lag">${c.lag_days}d earlier &nbsp;·&nbsp; ${fmt(c.event_count)} ev &nbsp;·&nbsp; ${c.domains} outlets</div>
+        </div>
+        <div class="cz-bars">${bars}</div>
+        <div class="cz-grade gc-${c.grade}">${CZ_GRADE_LABEL[c.grade]}</div>
+        <div class="cz-conf">${Math.round(c.confidence*100)}%<small>CONF</small></div>
+      </div>`;
+  }).join('');
+
+  const gc = d.grade_counts || {};
+  const cov = Math.round((d.coverage || 0) * 100);
+
+  $('cz-main').innerHTML = `
+    <div class="cz-target">
+      <div class="cz-target-head">
+        <span class="cz-target-title">${esc(t.root_label)}</span>
+        <span class="cz-target-meta">${fmtDay(t.date)} · GOLDSTEIN ${t.goldstein} · ID ${esc(t.id)}</span>
+      </div>
+      <div class="cz-target-actors">${esc(t.actor1 || '—')} → ${esc(t.actor2 || '—')}</div>
+    </div>
+
+    <div class="cz-sec">Evidence channels</div>
+    <div class="cz-chan-grid">${channels}</div>
+
+    <div class="cz-sec">Candidate causes in the previous ${d.window_days} days —
+      ${gc.confirmed || 0} confirmed · ${gc.reported || 0} reported ·
+      ${gc.pattern || 0} pattern-based · ${gc.weak || 0} weak · ${gc.dropped || 0} dropped</div>
+    <div class="cz-cands">${cands || '<div class="cz-note">Nothing scored above the floor.</div>'}</div>
+
+    <div class="cz-coverage">
+      <span class="cz-label" style="margin:0">Coverage</span>
+      <div class="cz-cov-bar"><div class="cz-cov-fill" style="width:${cov}%"></div></div>
+      <span class="cz-cov-text">${cov}% of this event's causal support comes from links
+        we would stand behind — the rest is unexplained.</span>
+    </div>
+
+    <div class="cz-note">
+      <b>What this demo can and cannot do.</b>
+      Four channels are computed from the shipped parquet. Two need article text this
+      repo does not ship, so they report as unavailable instead of scoring zero —
+      which is the point: a denial and a silence must never look alike.
+      <b>Stated</b> is proxied by the pipeline's own precursor links, standing in for
+      the human-verified Stage 1. Weights are fixed and illustrative; in the real
+      design they are fitted on Stage 1's labelled decisions, so no confidence here
+      is calibrated. Presence is measured on <b>spike days</b> — a day whose count for
+      an event type exceeds its own 75th percentile — because at day granularity
+      common types fire nearly every day and raw co-occurrence says nothing.
+    </div>`;
+}
+
+function fmtDay(s) {
+  const v = String(s);
+  return v.length === 8 ? `${v.slice(0,4)}-${v.slice(4,6)}-${v.slice(6,8)}` : v;
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
 </script>
 </body>
 </html>
