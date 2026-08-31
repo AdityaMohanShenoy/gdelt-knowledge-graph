@@ -37,6 +37,28 @@ for c in sc["candidates"]:
 # A channel with no corpus must stay unavailable, never silently scored.
 assert any(not ch["available"] for ch in sc["channels"])
 
+# ── Actor tokens are weighted by corpus rarity, not string length ────────────
+# UNITED is longer than POLICE but appears in 10.9% of events against 0.9%, so
+# length ranks exactly the wrong token first.
+idf = app._token_idf(app._con, ["SAMYUKTA", "DELHI", "UNITED"])
+assert idf["UNITED"]["share"] > idf["DELHI"]["share"] > 0
+assert idf["SAMYUKTA"]["df"] == 0
+probes = app._pick_probes(idf)
+# df == 0 scores maximum idf but can never match anything, so it is useless.
+assert "SAMYUKTA" not in probes, probes
+# Above the share ceiling a token cannot discriminate between candidates.
+assert "UNITED" not in probes, probes
+assert probes == ["DELHI"], probes
+assert app._token_idf(app._con, []) == {} and app._pick_probes({}) == []
+
+probe = sc["retrieval"]["actor_probe"]
+assert len(probe) <= app.ACTOR_PROBES
+vocab = {t["token"]: t for t in sc["retrieval"]["actor_tokens"]}
+for t in probe:
+    assert vocab[t]["share"] <= app.ACTOR_MAX_SHARE and vocab[t]["df"] > 0, vocab[t]
+# Rarest first, with a tiebreaker -- the pick has to be stable across runs.
+assert probe == sorted(probe, key=lambda t: (-vocab[t]["idf"], t)), probe
+
 # Golden comparison is byte-identical, so every query needs a full sort key.
 assert json.dumps(asyncio.run(app.causal_score(event_id=sid, country="IN")), sort_keys=True) == \
        json.dumps(asyncio.run(app.causal_score(event_id=sid, country="IN")), sort_keys=True)

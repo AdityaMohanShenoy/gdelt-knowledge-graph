@@ -539,7 +539,9 @@ async def heatmap():
 
 CAUSAL_WINDOW_DAYS = 7
 CAUSAL_FLOOR = 0.08
-MIN_GROUP_EVENTS = 3          # a (day, type) group below this is too thin to score          # below this a candidate is scored but not drawn
+MIN_GROUP_EVENTS = 3          # a (day, type) group below this is too thin to score
+ACTOR_MAX_SHARE = 0.05        # a token in >5% of events cannot discriminate
+ACTOR_PROBES = 3              # how many of the rarest tokens to match on          # below this a candidate is scored but not drawn
 
 # Illustrative weights. In the real design these are fitted on the Stage 1
 # labelled decisions; there is no labelled set in this repo, so they are fixed
@@ -668,11 +670,42 @@ def _actor_tokens(*names) -> set:
     for n in names:
         if not n:
             continue
-        for tok in str(n).replace(",", " ").split():
-            tok = tok.strip().upper()
+        for raw in str(n).replace(",", " ").split():
+            tok = "".join(ch for ch in raw.upper() if ch.isalnum())
             if len(tok) > 2 and tok not in _STOP_ACTORS:
                 out.add(tok)
     return out
+
+
+def _token_idf(con, tokens: list[str]) -> dict:
+    """Document frequency and inverse document frequency per token, one scan.
+
+    Token length is a terrible proxy for how much a name narrows things down:
+    UNITED appears in 10.9% of events and POLICE in 0.9%, but UNITED is the
+    longer string. Counting is cheap, so count.
+    """
+    if not tokens:
+        return {}
+    sel = ", ".join(
+        f"COUNT(*) FILTER (WHERE Actor1Name ILIKE '%{safe(t)}%'"
+        f" OR Actor2Name ILIKE '%{safe(t)}%') AS t{i}"
+        for i, t in enumerate(tokens))
+    row = con.execute(f"SELECT COUNT(*) AS total, {sel} FROM events").fetchone()
+    total = max(int(num(row[0])), 1)
+    out = {}
+    for i, t in enumerate(tokens):
+        df = int(num(row[i + 1]))
+        out[t] = {"df": df, "share": df / total, "idf": math.log(total / (1 + df))}
+    return out
+
+
+def _pick_probes(idf: dict) -> list[str]:
+    """Rarest usable tokens. Sorted with a tiebreaker so the pick is stable."""
+    usable = [t for t, v in idf.items()
+              # df == 0 would score maximum idf while being unable to match
+              # anything at all, so it is useless rather than informative.
+              if v["df"] > 0 and v["share"] <= ACTOR_MAX_SHARE]
+    return sorted(usable, key=lambda t: (-idf[t]["idf"], t))[:ACTOR_PROBES]
 
 
 @app.get("/api/causal/seeds")
@@ -801,15 +834,18 @@ async def causal_score(event_id: str = "", country: str = "IN"):
         """)):
             documented_groups.add((int(num(r["day"])), str(r["rc"]).zfill(2)))
 
-    # Longer actor tokens are rarer and therefore more informative than short
-    # ones, so use them as a cheap stand-in for inverse document frequency.
-    probe = sorted(t_tokens, key=lambda x: (-len(x), x))[:3]
+    # Weight actor overlap by how rare each name is in the corpus, so a match
+    # on "SAMYUKTA KISAN MORCHA" counts far more than one on "UNITED".
+    tok_idf = _token_idf(con, sorted(t_tokens))
+    probe = _pick_probes(tok_idf)
+    idf_sum = sum(tok_idf[t]["idf"] for t in probe) or 1.0
     if probe:
-        actor_pred = " OR ".join(
-            f"Actor1Name ILIKE '%{safe(tok)}%' OR Actor2Name ILIKE '%{safe(tok)}%'"
-            for tok in probe)
+        hit_cols = ", ".join(
+            f"COUNT(*) FILTER (WHERE Actor1Name ILIKE '%{safe(t)}%'"
+            f" OR Actor2Name ILIKE '%{safe(t)}%') AS hit{i}"
+            for i, t in enumerate(probe))
     else:
-        actor_pred = "FALSE"
+        hit_cols = "0 AS hit0"
 
     # Candidate groups: one per (day, root code) in the preceding window.
     lo = t_day - CAUSAL_WINDOW_DAYS
@@ -820,7 +856,7 @@ async def causal_score(event_id: str = "", country: str = "IN"):
                COUNT(DISTINCT regexp_extract(SOURCEURL, '://([^/]+)', 1)) AS domains,
                AVG(GoldsteinScale) AS avg_g,
                MIN(GlobalEventID) AS rep_id,
-               COUNT(*) FILTER (WHERE {actor_pred}) AS actor_hits
+               {hit_cols}
         FROM events
         WHERE ActionGeo_CountryCode = '{safe(cc)}'
           AND day >= {lo} AND day < {t_day}
@@ -855,9 +891,12 @@ async def causal_score(event_id: str = "", country: str = "IN"):
         nec  = max(num(stat.get("necessity")), 0.0)
         contrastive = min(0.75 * suff + 0.25 * nec, 1.0)
 
-        # Share of the group's events naming an actor the target also names.
+        # Each probe token contributes the share of the group's events naming
+        # it, weighted by that token's own rarity.
         n_events = max(int(num(r["n"])), 1)
-        actors = min(int(num(r["actor_hits"])) / n_events, 1.0)
+        hits = {t: int(num(r.get(f"hit{i}"))) for i, t in enumerate(probe)}
+        actors = min(sum((hits[t] / n_events) * (tok_idf[t]["idf"] / idf_sum)
+                         for t in probe), 1.0) if probe else 0.0
 
         # Log scale: 40+ distinct domains is saturation, 8 is unremarkable.
         domains = int(num(r["domains"]))
@@ -894,8 +933,10 @@ async def causal_score(event_id: str = "", country: str = "IN"):
             {"key": "contrastive", "score": round(contrastive, 3),
              "detail": f"0.75 × sufficiency {suff:.3f} + 0.25 × necessity {nec:.3f}"},
             {"key": "actors", "score": round(actors, 3),
-             "detail": (f"{int(num(r['actor_hits']))} of {n_events} events name a target token"
-                        + (f" {probe}" if probe else " (target has no usable tokens)"))},
+             "detail": (" · ".join(
+                 f"{t} idf {tok_idf[t]['idf']:.2f} (in {tok_idf[t]['share']*100:.2f}% "
+                 f"of events) matched {hits[t]}/{n_events}" for t in probe)
+                 if probe else "target has no token rare enough to discriminate")},
             {"key": "contradiction", "score": 0.0,
              "detail": "no article corpus in this build — reported unavailable, not scored 0"},
         ]
@@ -933,7 +974,7 @@ async def causal_score(event_id: str = "", country: str = "IN"):
             "event_count": int(num(r["n"])),
             "domains":     domains,
             "avg_goldstein": round(num(r["avg_g"]), 2),
-            "actor_hits":  int(num(r["actor_hits"])),
+            "actor_hits":  {t: hits[t] for t in probe},
             "channels":    ch,
             "confidence":  round(conf, 4),
             "grade":       grade,
@@ -984,6 +1025,19 @@ async def causal_score(event_id: str = "", country: str = "IN"):
             "deduped":     len(scored),
             "min_group":   MIN_GROUP_EVENTS,
             "actor_probe": probe,
+            "actor_tokens": [
+                {"token": t,
+                 "df": tok_idf[t]["df"],
+                 "share": round(tok_idf[t]["share"], 5),
+                 "idf": round(tok_idf[t]["idf"], 2),
+                 "used": t in probe,
+                 "reason": ("selected" if t in probe else
+                            "never appears in the corpus" if tok_idf[t]["df"] == 0 else
+                            f"too common — in {tok_idf[t]['share']*100:.1f}% of events"
+                            if tok_idf[t]["share"] > ACTOR_MAX_SHARE else
+                            "usable but not among the rarest")}
+                for t in sorted(tok_idf, key=lambda x: (-tok_idf[x]["idf"], x))
+            ],
         },
         "channels":   CHANNEL_META,
         "weights":    CAUSAL_W,
