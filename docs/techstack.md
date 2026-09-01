@@ -18,6 +18,7 @@ The immediate goal is reproducible research on a single machine. The stack keeps
 | Data processing | DuckDB + PyArrow | Efficient SQL and columnar processing over Parquet on one machine. |
 | Batch orchestration | Prefect local server + worker | Provides visible, resumable batch flows without building a streaming system. |
 | Normalized source of truth | Parquet + JSON manifests | Immutable, portable artifacts with explicit provenance. |
+| Article evidence store | PostgreSQL in Docker | Checkpointed URL ingestion, searchable cleaned text, and a direct path to Supabase PostgreSQL. |
 | Graph database | Neo4j | Cypher-based event path queries and a clear path to managed Neo4j later. |
 | Vector database | Qdrant in Docker | Local semantic retrieval with metadata filtering and a service boundary. |
 | Backend API | Hono gateway + FastAPI core | TypeScript-facing APIs with Python-owned research and graph semantics. |
@@ -66,8 +67,9 @@ FastAPI publishes the internal OpenAPI contract. A generated TypeScript client a
 
 ## Local infrastructure
 
-Docker Compose will eventually provide the local services:
+Docker Compose will provide the local article store now and will eventually provide the remaining local services:
 
+- PostgreSQL.
 - Neo4j.
 - Qdrant.
 - Prefect server.
@@ -85,6 +87,7 @@ Suggested ports:
 | Vite frontend | 5173 |
 | Hono gateway | 3000 |
 | FastAPI core | 8000 |
+| PostgreSQL | 5432 |
 | Neo4j browser | 7474 |
 | Neo4j Bolt | 7687 |
 | Qdrant | 6333 |
@@ -98,6 +101,8 @@ Python runtime dependencies are declared in `pyproject.toml` and mirrored in `re
 The locked Python environment includes:
 
 - DuckDB, PyArrow, Polars, and pandas for data work.
+- asyncpg for checkpointed article ingestion and local Postgres access.
+- Trafilatura, jusText, lxml, and related parsing dependencies for boilerplate-resistant article extraction.
 - FastAPI, Uvicorn, Pydantic, and Pydantic Settings for the Python service.
 - Neo4j and Qdrant clients.
 - Prefect for batch orchestration.
@@ -116,6 +121,10 @@ The TypeScript workspace manifest contains the planned Hono, Zod, React, TanStac
 - Store normalized data as Parquet.
 - Store run configuration and provenance in JSON manifests.
 - Keep full retrieved article text in private local storage only.
+- Keep article status, cleaned text, metadata, and retry checkpoints in PostgreSQL; the schema is portable to Supabase.
+- Let the local viewer enqueue a selected URL for a bounded targeted fetch while the bulk dispatcher continues processing the full queue.
+- Keep raw HTML compressed on a local volume and reference it from PostgreSQL by content-addressed path.
+- Preserve each event observation independently even when multiple observations share a source URL.
 
 Recommended setup commands:
 

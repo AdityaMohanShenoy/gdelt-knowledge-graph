@@ -99,7 +99,7 @@ def write_fixture(path: Path) -> None:
     connection.close()
 
 
-def test_build_units_groups_by_source_and_event_code(tmp_path):
+def test_build_units_keeps_each_global_event_as_its_own_record(tmp_path):
     builder = load_builder()
     input_path = tmp_path / "events.parquet"
     output_path = tmp_path / "annotation_units.json"
@@ -108,14 +108,17 @@ def test_build_units_groups_by_source_and_event_code(tmp_path):
 
     manifest = builder.build_units(input_path, output_path, manifest_path)
     payload = json.loads(output_path.read_text())
-    grouped = next(unit for unit in payload["units"] if unit["event_code"] == "190")
-
-    assert manifest["unit_count"] == 3
-    assert manifest["member_event_count"] == 4
-    assert manifest["multi_member_units"] == 1
-    assert grouped["event_count"] == 2
-    assert [member["id"] for member in grouped["members"]] == ["event-1", "event-2"]
-    assert len(grouped["actor_variants"]) == 2
+    assert manifest["event_count"] == 4
+    assert manifest["unique_source_urls"] == 2
+    assert len(payload["units"]) == 4
+    assert [unit["event_id"] for unit in payload["units"]] == [
+        "event-1",
+        "event-2",
+        "event-3",
+        "event-4",
+    ]
+    assert payload["units"][0]["source_url"] == payload["units"][1]["source_url"]
+    assert all("members" not in unit for unit in payload["units"])
     assert json.loads(manifest_path.read_text()) == manifest
 
 
@@ -142,4 +145,4 @@ def test_cli_accepts_custom_paths(tmp_path):
     )
 
     assert output_path.exists()
-    assert json.loads(result.stdout)["unit_count"] == 3
+    assert json.loads(result.stdout)["event_count"] == 4

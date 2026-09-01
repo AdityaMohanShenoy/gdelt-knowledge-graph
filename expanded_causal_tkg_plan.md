@@ -110,13 +110,26 @@ Extract main article text
 Store cleaned text
 ```
 
-Store each article once to avoid repeated ingestion and to preserve reproducibility.
+Store one article document row per normalized URL to avoid repeated ingestion while preserving every GDELT event observation that points to that URL.
 
-Recommended storage:
+The bulk dispatcher processes the queue with checkpointed, host-aware concurrency so a slow publisher cannot monopolize the global worker pool. The local event viewer also exposes a targeted fetch action for an individual source URL, so a selected article can be retrieved immediately without waiting for the bulk queue to reach it; both paths write through the same Postgres status record and extraction pipeline.
+
+Local pilot storage:
+
+### Docker Postgres
+
+The local Docker Postgres store holds:
+
+- source URL and final URL metadata
+- fetch status, HTTP status, retry attempts, and leases
+- cleaned article text and extraction metadata
+- content hashes and raw HTML paths
+
+The schema is standard PostgreSQL so it can be moved to Supabase later. Raw HTML remains compressed on the local evidence volume for the pilot; Supabase Object Storage is the planned destination when remote storage is needed.
 
 ### Supabase Postgres
 
-For structured records:
+The later Supabase store will hold the structured research records:
 
 - source metadata
 - event mentions

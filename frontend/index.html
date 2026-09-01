@@ -427,6 +427,60 @@
         white-space: nowrap;
       }
 
+      .article-panel {
+        margin-top: 22px;
+        padding-top: 16px;
+        border-top: 1px solid var(--ink);
+      }
+
+      .article-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .article-button {
+        padding: 9px 11px;
+        border: 1px solid var(--ink);
+        color: var(--white);
+        background: var(--moss);
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .article-button:disabled {
+        cursor: wait;
+        opacity: 0.6;
+      }
+
+      .article-status {
+        color: var(--muted);
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 0.65rem;
+        text-transform: uppercase;
+      }
+
+      .article-text {
+        max-height: 300px;
+        margin-top: 14px;
+        overflow: auto;
+        color: var(--ink);
+        font-size: 0.9rem;
+        line-height: 1.62;
+        white-space: pre-wrap;
+      }
+
+      .article-text.empty {
+        display: block;
+        min-height: 0;
+        padding: 0;
+        color: var(--muted);
+        text-align: left;
+      }
+
       .card-actions {
         display: flex;
         align-items: center;
@@ -716,11 +770,11 @@
         <div>
           <p class="kicker">GDELT / 2024 / action location: India</p>
           <h1>Annotation index</h1>
-          <p class="dek">One source-linked annotation unit at a time. Swipe the cards or browse the grouped records like a directory.</p>
+          <p class="dek">One GDELT event at a time. Inspect its actors, source URL, and cleaned article text from the local evidence store.</p>
         </div>
         <div class="stamp">
           Working view
-          <strong>Source-linked units</strong>
+          <strong>Event-level records</strong>
           14 · 18 · 19 · 20
         </div>
       </header>
@@ -741,8 +795,8 @@
           </select>
         </label>
         <label class="field">
-          <span class="field-label">Find a unit</span>
-          <input id="search" type="search" placeholder="Unit ID, member ID, actor, code, source URL">
+          <span class="field-label">Find an event</span>
+          <input id="search" type="search" placeholder="Event ID, actor, code, source URL">
         </label>
         <label class="file-button">
           Load JSON
@@ -756,8 +810,8 @@
           <span class="stat-value" id="view-count">Loading…</span>
         </div>
         <div class="stat">
-          <span class="stat-label">Member events</span>
-          <span class="stat-value" id="current-date">—</span>
+          <span class="stat-label">Selected event</span>
+          <span class="stat-value" id="current-event-id">—</span>
         </div>
         <div class="stat">
           <span class="stat-label">Data source</span>
@@ -768,7 +822,7 @@
       <section class="workspace">
         <div class="panel">
           <div class="panel-head">
-            <h2 class="panel-title" id="panel-title">Annotation unit</h2>
+            <h2 class="panel-title" id="panel-title">Event record</h2>
             <span class="counter" id="counter">0 / 0</span>
           </div>
           <div class="card-stage" id="card-stage"></div>
@@ -779,8 +833,7 @@
                   <tr>
                     <th>Root</th>
                     <th>Date</th>
-                    <th>Unit ID</th>
-                    <th>Members</th>
+                    <th>Event ID</th>
                     <th>Actors</th>
                   </tr>
                 </thead>
@@ -791,11 +844,11 @@
         </div>
         <aside class="preview" id="preview">
           <p class="kicker">Reading the index</p>
-          <h2>Start with the source, then inspect its members.</h2>
-          <p class="preview-copy">Each card groups validated event rows by exact source URL and CAMEO event code. The member records remain attached so actor variants and event IDs are still visible during annotation.</p>
+          <h2>Start with the event, then read its source.</h2>
+          <p class="preview-copy">Each card is one GDELT GlobalEventID. Repeated source URLs remain separate records, while the article text is fetched on demand from the local Postgres-backed evidence store.</p>
           <div class="legend">
             <div class="legend-item"><span class="legend-dot"></span> vermilion rail = target root</div>
-            <div class="legend-item"><span class="mono">← →</span> move through units</div>
+            <div class="legend-item"><span class="mono">← →</span> move through events</div>
             <div class="legend-item"><span class="mono">drag</span> swipe a card left or right</div>
           </div>
         </aside>
@@ -819,7 +872,8 @@
         root: "all",
         query: "",
         source: "Waiting for JSON",
-        drag: null
+        drag: null,
+        articleCache: Object.create(null)
       };
       const cardStage = document.getElementById("card-stage");
       const listPanel = document.getElementById("list-panel");
@@ -828,7 +882,7 @@
       const panelTitle = document.getElementById("panel-title");
       const counter = document.getElementById("counter");
       const viewCount = document.getElementById("view-count");
-      const currentDate = document.getElementById("current-date");
+      const currentEventId = document.getElementById("current-event-id");
       const dataSource = document.getElementById("data-source");
       const status = document.getElementById("status");
 
@@ -856,8 +910,6 @@
       }
 
       function normalizeEvent(event) {
-        const members = Array.isArray(event.members) ? event.members : [];
-        const firstMember = members[0] || event;
         const baseVariant = {
           actor1: field(event, "actor1", "Actor1Name", "Unspecified actor"),
           actor1_country: field(event, "actor1_country", "Actor1CountryCode", ""),
@@ -867,17 +919,15 @@
         const actorVariants = Array.isArray(event.actor_variants) && event.actor_variants.length
           ? event.actor_variants
           : [baseVariant];
-        const dates = Array.isArray(event.dates) && event.dates.length
-          ? event.dates
-          : [field(event, "day", "SQLDATE", "—")];
-        const goldsteinValues = Array.isArray(event.goldstein_values)
-          ? event.goldstein_values
-          : (event.goldstein !== undefined ? [event.goldstein] : []);
+        const day = field(event, "day", "SQLDATE", "—");
+        const eventId = event.event_id || event.GlobalEventID || event.id || event.unit_id || "unknown";
+        const goldsteinValues = event.goldstein !== undefined ? [event.goldstein] : [];
         return {
-          day: dates[0],
-          dates: dates,
-          datetime: field(event, "datetime", "DATEADDED", text(firstMember.datetime, "—")),
-          id: field(event, "unit_id", "id", field(event, "GlobalEventID", "GlobalEventID", "unknown")),
+          day: day,
+          dates: [day],
+          datetime: field(event, "datetime", "DATEADDED", "—"),
+          id: eventId,
+          eventId: eventId,
           eventCode: field(event, "event_code", "EventCode", "—"),
           root: field(event, "root", "EventRootCode", "—"),
           goldstein: goldsteinValues[0],
@@ -887,10 +937,7 @@
           actor2: actorVariants[0].actor2,
           actor2Country: actorVariants[0].actor2_country,
           actorVariants: actorVariants,
-          members: members,
-          memberCount: Number(event.event_count || members.length || 1),
-          url: field(event, "source_url", "url", field(event, "SOURCEURL", "SOURCEURL", "")),
-          isUnit: Boolean(event.unit_id || event.members)
+          url: event.source_url || event.url || event.SOURCEURL || ""
         };
       }
 
@@ -898,7 +945,25 @@
         const records = Array.isArray(payload)
           ? payload
           : (payload.units || payload.events);
-        return Array.isArray(records) ? records.map(normalizeEvent) : [];
+        if (!Array.isArray(records)) {
+          return [];
+        }
+        const eventRecords = [];
+        records.forEach(function(record) {
+          if (Array.isArray(record.members) && record.members.length) {
+            record.members.forEach(function(member) {
+              eventRecords.push(Object.assign({}, record, member, {
+                event_id: member.id || member.event_id || member.GlobalEventID,
+                source_url: member.source_url || record.source_url || record.url || record.SOURCEURL,
+                event_code: member.event_code || record.event_code || record.EventCode,
+                root: member.root || record.root || record.EventRootCode
+              }));
+            });
+          } else {
+            eventRecords.push(record);
+          }
+        });
+        return eventRecords.map(normalizeEvent);
       }
 
       function dateLabel(event) {
@@ -955,14 +1020,6 @@
       }
 
       function searchableText(event) {
-        const members = (event.members || []).map(function(member) {
-          return [
-            member.id,
-            member.day,
-            member.actor1,
-            member.actor2
-          ].join(" ");
-        });
         const variants = (event.actorVariants || []).map(function(variant) {
           return [
             variant.actor1,
@@ -976,17 +1033,8 @@
           event.eventCode,
           event.root,
           event.url,
-          members.join(" "),
           variants.join(" ")
         ].join(" ").toLowerCase();
-      }
-
-      function memberIdsLabel(event) {
-        const ids = (event.members || []).map(function(member) {
-          return text(member.id, "unknown");
-        });
-        const visible = ids.slice(0, 4).join(" · ");
-        return visible + (ids.length > 4 ? " · +" + (ids.length - 4) + " more" : "");
       }
 
       function updateFilters(resetIndex) {
@@ -1008,6 +1056,67 @@
         return state.filtered[state.index] || null;
       }
 
+      function articleCacheEntry(event) {
+        return state.articleCache[event.url || event.id] || { state: "idle" };
+      }
+
+      function articleStatusLabel(entry) {
+        if (entry.state === "loading") {
+          return "Starting fetch";
+        }
+        if (entry.state === "error") {
+          return "API unavailable";
+        }
+        if (entry.state === "loaded") {
+          const labels = {
+            pending: "Queued",
+            fetching: "Fetching",
+            retryable_error: "Retry scheduled",
+            retry_exhausted: "Retries exhausted",
+            insufficient_text: "Insufficient text",
+            unsupported_content: "Unsupported content",
+            paywall: "Paywall",
+            blocked: "Blocked",
+            dead: "Dead link",
+            extracted: "Extracted"
+          };
+          const articleStatus = text(entry.payload.status, "stored");
+          return labels[articleStatus] || articleStatus.replace(/_/g, " ");
+        }
+        return "Ready to fetch";
+      }
+
+      function articlePanel(event) {
+        const entry = articleCacheEntry(event);
+        const payload = entry.payload;
+        let message = "Fetch this URL to request article text now.";
+        if (!event.url) {
+          message = "This event has no source URL.";
+        } else if (entry.state === "error") {
+          message = entry.message;
+        } else if (entry.state === "loading") {
+          message = "The targeted request is starting.";
+        } else if (entry.state === "loaded" && !payload.found) {
+          message = "This URL is not in the article queue yet.";
+        } else if (entry.state === "loaded" && ["pending", "fetching", "retryable_error"].includes(payload.status)) {
+          message = "The targeted request is in progress. This panel will update when it finishes.";
+        } else if (entry.state === "loaded" && !payload.cleaned_text) {
+          message = text(payload.extraction_reason || payload.last_error, "No readable article text was stored.");
+        }
+        const articleText = payload && payload.cleaned_text
+          ? '<div class="article-text">' + escapeHtml(payload.cleaned_text) + '</div>'
+          : '<div class="article-text empty">' + escapeHtml(message) + '</div>';
+        const button = event.url
+          ? '<button class="article-button" id="load-article" type="button"' + (entry.state === "loading" ? " disabled" : "") + '>' +
+            (entry.state === "loading" ? "Fetching…" : "Fetch article text") + '</button>'
+          : '';
+        return '<div class="article-panel">' +
+          '<div class="article-toolbar"><span class="meta-key">Article text</span>' +
+          '<span class="article-status">' + escapeHtml(articleStatusLabel(entry)) + '</span>' + button + '</div>' +
+          articleText +
+        '</div>';
+      }
+
       function eventCard(event) {
         const url = safeUrl(event.url);
         const source = url
@@ -1024,7 +1133,7 @@
               '<span class="event-date">' + escapeHtml(dateLabel(event)) + '</span>' +
             '</div>' +
             '<h2>' + escapeHtml(rootLabel(event.root)) + '</h2>' +
-            '<span class="event-id">UNIT ID / ' + escapeHtml(event.id) + ' · ' + escapeHtml(event.memberCount) + ' MEMBER EVENTS</span>' +
+            '<span class="event-id">EVENT ID / ' + escapeHtml(event.id) + '</span>' +
             '<div class="event-meta">' +
               '<div class="meta-box">' +
                 '<span class="meta-key">Actor 01</span>' +
@@ -1043,12 +1152,57 @@
                 source +
               '</div>' +
               '<div class="meta-box full">' +
-                '<span class="meta-key">Member event IDs</span>' +
-                '<span class="meta-value mono">' + escapeHtml(memberIdsLabel(event)) + '</span>' +
+                '<span class="meta-key">Source URL</span>' +
+                '<span class="meta-value mono">' + escapeHtml(event.url || "No source URL") + '</span>' +
               '</div>' +
             '</div>' +
+            articlePanel(event) +
           '</div>' +
         '</article>';
+      }
+
+      async function loadArticle(event) {
+        if (!event.url) {
+          return;
+        }
+        const key = event.url || event.id;
+        state.articleCache[key] = { state: "loading" };
+        render();
+        try {
+          let response = await fetch("/api/articles/fetch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: event.url })
+          });
+          if (!response.ok) {
+            throw new Error("Article API returned HTTP " + response.status);
+          }
+          let payload = await response.json();
+          state.articleCache[key] = { state: "loaded", payload: payload };
+          if (currentEvent() === event) {
+            render();
+          }
+          for (let attempt = 0; attempt < 90 && ["pending", "fetching", "retryable_error"].includes(payload.status); attempt += 1) {
+            await new Promise(function(resolve) { setTimeout(resolve, 1000); });
+            response = await fetch("/api/articles/by-url?url=" + encodeURIComponent(event.url));
+            if (!response.ok) {
+              throw new Error("Article API returned HTTP " + response.status);
+            }
+            payload = await response.json();
+            state.articleCache[key] = { state: "loaded", payload: payload };
+            if (currentEvent() === event) {
+              render();
+            }
+          }
+        } catch (error) {
+          state.articleCache[key] = {
+            state: "error",
+            message: text(error && error.message, "Start the local viewer API to load article text.")
+          };
+        }
+        if (currentEvent() === event) {
+          render();
+        }
       }
 
       function renderCards() {
@@ -1060,13 +1214,17 @@
         cardStage.innerHTML = eventCard(event) +
           '<div class="card-actions">' +
             '<div class="nav-actions">' +
-              '<button class="nav-button" id="previous" type="button" aria-label="Previous unit">←</button>' +
-              '<button class="nav-button" id="next" type="button" aria-label="Next unit">→</button>' +
+              '<button class="nav-button" id="previous" type="button" aria-label="Previous event">←</button>' +
+              '<button class="nav-button" id="next" type="button" aria-label="Next event">→</button>' +
             '</div>' +
             '<span class="hint">Swipe · arrow keys<br>left / right</span>' +
           '</div>';
         document.getElementById("previous").addEventListener("click", function() { move(-1); });
         document.getElementById("next").addEventListener("click", function() { move(1); });
+        const articleButton = document.getElementById("load-article");
+        if (articleButton) {
+          articleButton.addEventListener("click", function() { loadArticle(event); });
+        }
         bindSwipe(document.getElementById("active-card"));
       }
 
@@ -1079,7 +1237,6 @@
             '<td>' + escapeHtml(event.root) + '</td>' +
             '<td>' + escapeHtml(dateLabel(event)) + '</td>' +
             '<td><button class="row-button" data-row-index="' + actualIndex + '" type="button"><span class="list-id">' + escapeHtml(event.id) + '</span></button></td>' +
-            '<td>' + escapeHtml(event.memberCount) + '</td>' +
             '<td><div class="list-actor">' + escapeHtml(actorVariantLabel(event, 1)) + '</div><div class="list-actor">' + escapeHtml(actorVariantLabel(event, 2)) + '</div></td>' +
           '</tr>';
         }).join("");
@@ -1096,9 +1253,9 @@
         const event = currentEvent();
         viewCount.textContent = total.toLocaleString("en-IN");
         counter.textContent = total ? (state.index + 1).toLocaleString("en-IN") + " / " + total.toLocaleString("en-IN") : "0 / 0";
-        currentDate.textContent = event ? event.memberCount.toLocaleString("en-IN") : "—";
+        currentEventId.textContent = event ? event.id : "—";
         dataSource.textContent = state.source;
-        panelTitle.textContent = state.mode === "cards" ? "Annotation unit" : "Unit directory";
+        panelTitle.textContent = state.mode === "cards" ? "Event record" : "Event directory";
         cardStage.style.display = state.mode === "cards" ? "block" : "none";
         listPanel.classList.toggle("visible", state.mode === "list");
         preview.style.display = state.mode === "list" ? "none" : "block";
@@ -1156,8 +1313,9 @@
 
       function loadPayload(payload, source) {
         state.events = normalizePayload(payload);
-        state.source = source + " · " + state.events.length.toLocaleString("en-IN") + " units";
-        status.textContent = state.events.length ? "" : "The selected JSON did not contain an events or units array.";
+        state.articleCache = Object.create(null);
+        state.source = source + " · " + state.events.length.toLocaleString("en-IN") + " events";
+        status.textContent = state.events.length ? "" : "The selected JSON did not contain an events array.";
         updateFilters(true);
       }
 
@@ -1217,7 +1375,7 @@
           loadPayload(payload, "Generated target JSON");
         })
         .catch(function() {
-          showLoadError("Annotation JSON not found. Run the grouping command or use Load JSON.");
+          showLoadError("Annotation JSON not found. Run the event export command or use Load JSON.");
         });
       render();
     </script>

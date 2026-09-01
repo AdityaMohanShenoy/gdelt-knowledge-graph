@@ -26,7 +26,13 @@ def test_frontend_exposes_both_view_modes_and_data_fallback():
     assert 'id="file-input"' in source
     assert 'const DATA_URL = "../data/working/india-2024/annotation_units.json";' in source
     assert "Annotation JSON not found." in source
-    assert "memberCount" in source
+    assert "EVENT ID /" in source
+    assert "/api/articles/by-url?url=" in source
+    assert "/api/articles/fetch" in source
+    assert 'method: "POST"' in source
+    assert "Fetch article text" in source
+    assert "Queued" in source
+    assert "memberCount" not in source
 
 
 def test_inline_javascript_parses():

@@ -3,7 +3,7 @@
   "input_path": "data/working/india-2024/target_events.parquet",
   "output_path": "data/working/india-2024/target_events_url_validated.parquet",
   "cache_path": "data/working/india-2024/url_cache.json",
-  "generated_at": "2026-08-25T17:32:49.770989+00:00",
+  "generated_at": "2026-08-31T19:54:27.650999+00:00",
   "filter": {
     "source_field": "SOURCEURL",
     "behavior": "keep events with a validated live source URL",
