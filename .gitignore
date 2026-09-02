@@ -53,6 +53,15 @@ test-results/
 .qdrant/
 data/raw/
 data/evidence/
+data/working/india-2024/events.parquet
+data/working/india-2024/target_events.parquet
+data/working/india-2024/target_events.json
+data/working/india-2024/target_events_url_validated.parquet
+data/working/india-2024/url_cache.json
+data/working/india-2024/annotation_units.json
+data/working/india-2024/article_urls.parquet
+data/working/india-2024/article_urls_manifest.json
+data/working/postgres/
 *.duckdb
 *.duckdb.wal
 *.sqlite

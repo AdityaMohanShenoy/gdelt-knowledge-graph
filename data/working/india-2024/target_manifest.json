@@ -1,0 +1,69 @@
+{
+  "manifest_version": "india-target-events.v1",
+  "source_manifest": "india-event-universe.v1",
+  "input_path": "data/working/india-2024/events.parquet",
+  "output_path": "data/working/india-2024/target_events.parquet",
+  "filter": {
+    "field": "EventRootCode",
+    "operator": "IN",
+    "values": [
+      "14",
+      "18",
+      "19",
+      "20"
+    ]
+  },
+  "generated_at": "2026-08-31T19:54:22.782977+00:00",
+  "input_rows": 2220760,
+  "output_rows": 185238,
+  "input_day_min": 20240101,
+  "input_day_max": 20241231,
+  "output_day_min": 20240101,
+  "output_day_max": 20241231,
+  "input_root_counts": {
+    "19": 102802,
+    "13": 30082,
+    "04": 551686,
+    "06": 47024,
+    "12": 59262,
+    "09": 51469,
+    "08": 87527,
+    "07": 62715,
+    "10": 38229,
+    "11": 195569,
+    "02": 154243,
+    "14": 43410,
+    "01": 298973,
+    "05": 183906,
+    "15": 10432,
+    "20": 279,
+    "03": 141610,
+    "17": 105505,
+    "16": 17290,
+    "18": 38747
+  },
+  "output_root_counts": {
+    "18": 38747,
+    "19": 102802,
+    "20": 279,
+    "14": 43410
+  },
+  "columns_preserved": true,
+  "columns": [
+    "day",
+    "datetime",
+    "GlobalEventID",
+    "EventCode",
+    "EventRootCode",
+    "QuadClass",
+    "GoldsteinScale",
+    "Actor1Name",
+    "Actor1CountryCode",
+    "Actor2Name",
+    "Actor2CountryCode",
+    "ActionGeo_CountryCode",
+    "SOURCEURL",
+    "month",
+    "year"
+  ]
+}

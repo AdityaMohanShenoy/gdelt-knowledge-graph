@@ -1,0 +1,15 @@
+{
+  "manifest_version": "india-annotation-events.v2",
+  "source_path": "data/working/india-2024/target_events_url_validated.parquet",
+  "output_path": "data/working/india-2024/annotation_units.json",
+  "generated_at": "2026-08-31T19:54:27.957107+00:00",
+  "record_type": "event_observation",
+  "event_count": 170860,
+  "unique_source_urls": 78914,
+  "units_by_root": {
+    "19": 94561,
+    "14": 40306,
+    "18": 35769,
+    "20": 224
+  }
+}
