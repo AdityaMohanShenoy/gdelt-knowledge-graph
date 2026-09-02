@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -131,3 +132,165 @@ def test_extract_article_accepts_bytes_and_uses_recall_for_sparse_pages():
     assert result.title == "District report"
     assert "Officials met residents" in result.text
     assert "Navigation Home" not in result.text
+
+
+def test_extract_article_cleans_syndication_wrappers_and_flags_press_release(monkeypatch):
+    extractor = load_extractor()
+    lead = (
+        "The organization announced a new programme to support communities across the region."
+    )
+    body = (
+        f"{lead} Officials said the programme would fund local services and publish regular "
+        "results. "
+        "The organizers described the initiative as a long-term commitment to public welfare. "
+        "The above press release has been provided by PRNewswire. "
+        "The announcement included details about the schedule, participating groups, and "
+        "expected outcomes."
+    )
+    payload = {
+        "title": "Community programme announced across the region",
+        "text": (
+            "| |\n\n"
+            "| Community programme announced across the region \\| November 27, 2024 "
+            f"PRNewswire {lead} |\n\n"
+            f"| {body} |\n\n"
+            "| LATEST COMMENTS () \\| POST YOUR COMMENT |\n\n"
+            "| Comments Not Available |"
+        ),
+    }
+    monkeypatch.setattr(
+        extractor.trafilatura,
+        "extract",
+        lambda *args, **kwargs: json.dumps(payload),
+    )
+
+    result = extractor.extract_article("<html><body>article</body></html>")
+
+    assert result.status == "extracted"
+    assert result.reason == "press-release"
+    assert not result.text.startswith("|")
+    assert "LATEST COMMENTS" not in result.text
+    assert result.text.count(lead) == 1
+
+
+def test_extract_article_rejects_current_navigation_for_stale_article_title(monkeypatch):
+    extractor = load_extractor()
+    payload = {
+        "title": "Vodafone Idea signs network equipment deal with Nokia and Ericsson",
+        "text": (
+            "Search\n\nChannels\n\nRecommended for you...\n\n27 Aug 2026\n\n"
+            "Anthropic signs a compute capacity agreement with Nscale - report\n\n"
+            "Energy and Sustainability\n\nWater efficiency and renewable power\n\n"
+            "Media\n\nWhere workloads live and why\n\n"
+            "Investment and Markets\n\nFinancing the data center build-out\n\n"
+            "Management and Operations\n\nDay-to-day operations, workforce and skills\n\n"
+            "Cloud and Hybrid\n\nWhere workloads live and why they matter\n\n"
+            "Construction\n\nSite selection, building, and expansion"
+        ),
+    }
+    monkeypatch.setattr(
+        extractor.trafilatura,
+        "extract",
+        lambda *args, **kwargs: json.dumps(payload),
+    )
+
+    result = extractor.extract_article("<html><body>current page</body></html>")
+
+    assert result.status == "insufficient_text"
+    assert result.reason == "title-body-mismatch"
+
+
+def test_extract_article_rejects_navigation_only_candidate_without_title(monkeypatch):
+    extractor = load_extractor()
+    navigation_block = "Navigation menu with current site links and section options"
+    payload = {
+        "title": "",
+        "text": "\n\n".join(
+            [
+                "Search",
+                "Channels",
+                "Recommended for you",
+                "Media",
+                "Home",
+                "Login",
+                "Topics",
+                "Latest News",
+                "More site navigation options",
+                "Related stories and links",
+                "Popular sections and topics",
+                "Newsletter signup and updates",
+                "Explore more site content",
+                "User account and access settings",
+                "Read the latest stories and updates",
+                "Browse the full list of site categories",
+                "Account preferences and notification settings",
+                "Discover popular articles and features",
+                navigation_block,
+                navigation_block.replace("current", "available"),
+            ]
+        ),
+    }
+    monkeypatch.setattr(
+        extractor.trafilatura,
+        "extract",
+        lambda *args, **kwargs: json.dumps(payload),
+    )
+
+    result = extractor.extract_article("<html><body>navigation</body></html>")
+
+    assert result.status == "insufficient_text"
+    assert result.reason == "navigation-only"
+
+
+def test_extract_article_rejects_dated_recommendation_listing(monkeypatch):
+    extractor = load_extractor()
+    payload = {
+        "title": "BNN Bloomberg - Canada Business News and Market Updates",
+        "text": "\n\n".join(
+            f"Story {index} about current markets and business developments "
+            "August 31, 2026 at 9:40p.m. EDT"
+            for index in range(10)
+        ),
+    }
+    monkeypatch.setattr(
+        extractor.trafilatura,
+        "extract",
+        lambda *args, **kwargs: json.dumps(payload),
+    )
+
+    result = extractor.extract_article("<html><body>listing</body></html>")
+
+    assert result.status == "insufficient_text"
+    assert result.reason == "navigation-only"
+
+
+def test_extract_article_flags_promotional_hotel_copy(monkeypatch):
+    extractor = load_extractor()
+    payload = {
+        "title": "Hotel returns to India with a soft opening",
+        "text": (
+            "Videos\n\nSHARE THIS PAGE\n\nNEWSLETTERS\n\nCONTACT US\n\n"
+            "Listen to This Article\n\n"
+            "Hotel returns to India with a soft opening\n\n"
+            "The hotel returns to India with a soft opening in December 2024. "
+            "This luxurious retreat offers 80 guest rooms, wellness facilities, and dining "
+            "options. "
+            "The company said it looks forward to welcoming guests at the new property. "
+            "The hotel described the destination as a tranquil escape for visitors. "
+            "Marketing material highlights its location, amenities, meeting spaces, and views "
+            "of the surrounding hills."
+        ),
+    }
+    monkeypatch.setattr(
+        extractor.trafilatura,
+        "extract",
+        lambda *args, **kwargs: json.dumps(payload),
+    )
+
+    result = extractor.extract_article("<html><body>promotion</body></html>")
+
+    assert result.status == "extracted"
+    assert result.reason == "promotional-content"
+    assert "Videos" not in result.text
+    assert "SHARE THIS PAGE" not in result.text
+    assert "Listen to This Article" not in result.text

@@ -76,3 +76,13 @@ ALTER TABLE article_documents
 
 CREATE INDEX IF NOT EXISTS article_documents_host_status_idx
     ON article_documents (host_key, status, lease_expires_at, document_id);
+
+CREATE INDEX IF NOT EXISTS article_documents_runnable_document_idx
+    ON article_documents (document_id)
+    INCLUDE (host_key, next_attempt_at)
+    WHERE status IN ('pending', 'retryable_error');
+
+CREATE INDEX IF NOT EXISTS article_documents_fetching_document_idx
+    ON article_documents (document_id)
+    INCLUDE (host_key, lease_expires_at)
+    WHERE status = 'fetching';

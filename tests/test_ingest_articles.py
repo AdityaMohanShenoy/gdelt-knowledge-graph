@@ -207,3 +207,66 @@ def test_claim_next_skips_a_saturated_host():
         asyncio.run(exercise_host_fair_claim(fetch))
     except (OSError, asyncpg.PostgresConnectionError) as error:
         pytest.skip(f"local Postgres is unavailable: {error}")
+
+
+async def exercise_recovery_claim(fetch):
+    schema_name = f"article_recovery_{uuid.uuid4().hex}"
+    admin_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=1, timeout=2)
+    await admin_pool.execute(f'CREATE SCHEMA "{schema_name}"')
+    await admin_pool.close()
+
+    async def set_search_path(connection):
+        await connection.execute(f'SET search_path TO "{schema_name}", public')
+
+    pool = await asyncpg.create_pool(
+        DATABASE_URL,
+        min_size=1,
+        max_size=1,
+        timeout=2,
+        setup=set_search_path,
+    )
+    expired_url = "https://expired.test/article"
+    retryable_url = "https://retryable.test/article"
+    pending_url = "https://pending.test/article"
+    try:
+        await pool.execute((ROOT / "pipeline" / "article_schema.sql").read_text())
+        await pool.execute(
+            """
+            INSERT INTO article_documents (
+                url_key, source_url, status, attempt_count, lease_expires_at, next_attempt_at
+            ) VALUES
+                ($1, $1, 'fetching', 1, NOW() - INTERVAL '1 minute', NOW()),
+                ($2, $2, 'retryable_error', 1, NULL, NOW() - INTERVAL '1 minute'),
+                ($3, $3, 'pending', 0, NULL, NOW())
+            """,
+            expired_url,
+            retryable_url,
+            pending_url,
+        )
+
+        expired = await fetch.claim_next(pool, per_host_concurrency=2)
+        retryable = await fetch.claim_next(pool, per_host_concurrency=2)
+        pending = await fetch.claim_next(pool, per_host_concurrency=2)
+
+        assert expired is not None
+        assert expired.source_url == expired_url
+        assert expired.attempt_count == 2
+        assert retryable is not None
+        assert retryable.source_url == retryable_url
+        assert retryable.attempt_count == 2
+        assert pending is not None
+        assert pending.source_url == pending_url
+        assert pending.attempt_count == 1
+    finally:
+        await pool.close()
+        cleanup_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=1, timeout=2)
+        await cleanup_pool.execute(f'DROP SCHEMA "{schema_name}" CASCADE')
+        await cleanup_pool.close()
+
+
+def test_claim_next_recovers_expired_and_retryable_rows_before_pending_rows():
+    fetch = load_fetch()
+    try:
+        asyncio.run(exercise_recovery_claim(fetch))
+    except (OSError, asyncpg.PostgresConnectionError) as error:
+        pytest.skip(f"local Postgres is unavailable: {error}")

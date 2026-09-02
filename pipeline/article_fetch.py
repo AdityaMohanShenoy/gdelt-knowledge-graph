@@ -20,6 +20,44 @@ USER_AGENT = "Mozilla/5.0 (compatible; GDELTResearch/1.0)"
 DEAD_STATUSES = frozenset({404, 410, 451})
 RETRYABLE_STATUSES = frozenset({408, 425, 429})
 
+CLAIM_QUERY_TEMPLATE = """
+WITH host_load AS (
+    SELECT host_key, COUNT(*) AS active_count
+    FROM article_documents
+    WHERE status = 'fetching'
+      AND lease_expires_at >= NOW()
+    GROUP BY host_key
+),
+candidate AS (
+    SELECT documents.document_id
+    FROM article_documents AS documents
+    LEFT JOIN host_load
+        ON host_load.host_key = documents.host_key
+    WHERE {predicate}
+      AND COALESCE(host_load.active_count, 0) < $2
+    ORDER BY documents.document_id
+    FOR UPDATE OF documents SKIP LOCKED
+    LIMIT 1
+)
+UPDATE article_documents AS documents
+SET status = 'fetching',
+    attempt_count = documents.attempt_count + 1,
+    lease_expires_at = NOW() + ($1 * INTERVAL '1 second'),
+    last_error = NULL
+FROM candidate
+WHERE documents.document_id = candidate.document_id
+RETURNING documents.document_id, documents.url_key,
+          documents.source_url, documents.attempt_count
+"""
+CLAIM_QUERIES = tuple(
+    CLAIM_QUERY_TEMPLATE.format(predicate=predicate)
+    for predicate in (
+        "documents.status = 'fetching' AND documents.lease_expires_at < NOW()",
+        "documents.status = 'retryable_error' AND documents.next_attempt_at <= NOW()",
+        "documents.status = 'pending'",
+    )
+)
+
 
 @dataclass(frozen=True)
 class Job:
@@ -132,43 +170,11 @@ async def claim_next(
     per_host_concurrency: int = PER_HOST_CONCURRENCY,
 ) -> Job | None:
     async with pool.acquire() as connection:
-        row = await connection.fetchrow(
-            """
-            WITH host_load AS (
-                SELECT host_key, COUNT(*) AS active_count
-                FROM article_documents
-                WHERE status = 'fetching'
-                  AND lease_expires_at >= NOW()
-                GROUP BY host_key
-            ),
-            candidate AS (
-                SELECT documents.document_id
-                FROM article_documents AS documents
-                LEFT JOIN host_load
-                    ON host_load.host_key = documents.host_key
-                WHERE (
-                    documents.status = 'pending'
-                    OR (documents.status = 'retryable_error' AND documents.next_attempt_at <= NOW())
-                    OR (documents.status = 'fetching' AND documents.lease_expires_at < NOW())
-                )
-                  AND COALESCE(host_load.active_count, 0) < $2
-                ORDER BY documents.document_id
-                FOR UPDATE OF documents SKIP LOCKED
-                LIMIT 1
-            )
-            UPDATE article_documents AS documents
-            SET status = 'fetching',
-                attempt_count = documents.attempt_count + 1,
-                lease_expires_at = NOW() + ($1 * INTERVAL '1 second'),
-                last_error = NULL
-            FROM candidate
-            WHERE documents.document_id = candidate.document_id
-            RETURNING documents.document_id, documents.url_key,
-                      documents.source_url, documents.attempt_count
-            """,
-            LEASE_SECONDS,
-            per_host_concurrency,
-        )
+        row = None
+        for query in CLAIM_QUERIES:
+            row = await connection.fetchrow(query, LEASE_SECONDS, per_host_concurrency)
+            if row is not None:
+                break
     if row is None:
         return None
     return Job(row["document_id"], row["url_key"], row["source_url"], row["attempt_count"])

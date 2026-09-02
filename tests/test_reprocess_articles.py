@@ -116,6 +116,7 @@ def test_benchmark_does_not_modify_canonical_text(tmp_path):
     assert row["extractor_version"] is None
     assert '"precision"' in record
     assert '"recall"' in record
+    assert '"production"' in record
 
 
 async def exercise_promote(reprocessor, tmp_path):

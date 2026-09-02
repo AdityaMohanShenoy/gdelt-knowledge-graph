@@ -5,10 +5,15 @@ import json
 import os
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import asyncpg
-from article_extractor import EXTRACTOR_VERSION, ExtractionResult, extract_article
+from article_extractor import (
+    EXTRACTOR_VERSION,
+    ExtractionResult,
+    extract_article,
+    extract_article_variant,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATABASE_URL = os.environ.get(
@@ -27,6 +32,7 @@ BENCHMARK_STATUSES = (
     "blocked",
     "parse_error",
 )
+CandidateMode = Literal["precision", "recall", "production"]
 
 
 def resolve_raw_path(raw_html_path: str, raw_dir: Path = DEFAULT_RAW_DIR) -> Path:
@@ -106,10 +112,14 @@ async def select_benchmark_rows(
 def run_candidate(
     row: asyncpg.Record,
     raw_dir: Path,
-    favor_recall: bool,
+    mode: CandidateMode = "production",
 ) -> ExtractionResult:
     body = read_raw_html(row["raw_html_path"], raw_dir)
-    return extract_article(body, url=row_url(row), favor_recall=favor_recall)
+    if mode == "precision":
+        return extract_article_variant(body, url=row_url(row), favor_recall=False)
+    if mode == "recall":
+        return extract_article_variant(body, url=row_url(row), favor_recall=True)
+    return extract_article(body, url=row_url(row))
 
 
 async def benchmark(
@@ -136,12 +146,15 @@ async def benchmark(
                 "extractor_version": EXTRACTOR_VERSION,
             }
             try:
-                precision = run_candidate(row, raw_dir, favor_recall=False)
-                recall = run_candidate(row, raw_dir, favor_recall=True)
+                precision = run_candidate(row, raw_dir, mode="precision")
+                recall = run_candidate(row, raw_dir, mode="recall")
+                production = run_candidate(row, raw_dir, mode="production")
                 record["precision"] = result_payload(precision)
                 record["recall"] = result_payload(recall)
+                record["production"] = result_payload(production)
                 counts[f"precision:{precision.status}"] += 1
                 counts[f"recall:{recall.status}"] += 1
+                counts[f"production:{production.status}"] += 1
             except (OSError, EOFError, gzip.BadGzipFile) as error:
                 record["error"] = f"{type(error).__name__}: {error}"
                 counts["read_error"] += 1
@@ -187,7 +200,7 @@ async def promote(
         for row in rows:
             last_document_id = row["document_id"]
             try:
-                result = run_candidate(row, raw_dir, favor_recall=False)
+                result = run_candidate(row, raw_dir, mode="production")
             except (OSError, EOFError, gzip.BadGzipFile) as error:
                 counts[f"read_error:{type(error).__name__}"] += 1
                 continue
