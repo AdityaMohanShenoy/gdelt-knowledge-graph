@@ -3,6 +3,9 @@
 See README.md for what the project does. These are the things that aren't obvious
 from the code and that have already caused bugs.
 
+`docs/BUILD_PLAN.md` is the phased plan for building out the full causal knowledge
+graph — numbered tasks with acceptance criteria, meant to be executed one at a time.
+
 ## Runtime reads exactly one file
 
 `app.py` has a single `read_parquet`, pointed at `out/step2_causal_filtered.parquet`
