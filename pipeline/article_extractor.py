@@ -138,6 +138,7 @@ TITLE_STOPWORDS = frozenset(
         "networks",
     }
 )
+BLOCK_EDGE_CHARS = "|" + " \t\n\r\x0b\x0c"
 SENTENCE_ENDINGS = re.compile(r"[.!?。！？](?=\s|$)")
 NON_CONTENT_TAGS = re.compile(
     r"<(script|style|noscript|template|svg)\b[^>]*>.*?</\1>",
@@ -176,8 +177,13 @@ def _meaningful_title_tokens(value: str) -> set[str]:
 
 def _normalize_extracted_block(value: str) -> str:
     value = value.replace(r"\|", " | ")
-    value = re.sub(r"^(?:\s*\|\s*)+", "", value)
-    value = re.sub(r"(?:\s*\|\s*)+$", "", value)
+    # These edges were stripped with `^(?:\s*\|\s*)+` and `(?:\s*\|\s*)+$`, which
+    # backtrack exponentially: \s* can match empty, so a whitespace-padded pipe run
+    # has exponentially many splits to try before the anchor fails. A nav bar like
+    # "Home | News | Sport | ..." took 39s at 18 pipes and hung the fetcher outright,
+    # because extraction runs synchronously in the event loop. Stripping the same
+    # character set is linear and leaves interior pipes alone, as before.
+    value = value.strip(BLOCK_EDGE_CHARS)
     return normalize_text(value)
 
 

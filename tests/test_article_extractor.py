@@ -294,3 +294,30 @@ def test_extract_article_flags_promotional_hotel_copy(monkeypatch):
     assert "Videos" not in result.text
     assert "SHARE THIS PAGE" not in result.text
     assert "Listen to This Article" not in result.text
+
+
+def test_normalize_block_stays_linear_on_pipe_heavy_tables():
+    """trafilatura runs with include_tables=True, so a wide table arrives as one
+    pipe-delimited block. The old `(?:\\s*\\|\\s*)+$` backtracked exponentially on
+    these and hung the whole fetcher, since extraction runs in the event loop."""
+    import time
+
+    extractor = load_extractor()
+    # No leading pipe, so the leading strip cannot consume the run first.
+    row = "Breadcrumb" + " | " * 40 + "tail"
+
+    start = time.perf_counter()
+    result = extractor._normalize_extracted_block(row)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 1.0, f"pipe-heavy block took {elapsed:.1f}s — backtracking regression"
+    assert result.startswith("Breadcrumb") and result.endswith("tail")
+
+
+def test_normalize_block_still_trims_pipes_and_whitespace():
+    extractor = load_extractor()
+
+    assert extractor._normalize_extracted_block("  |  Home | News  |  ") == "Home | News"
+    assert extractor._normalize_extracted_block("| | |") == ""
+    assert extractor._normalize_extracted_block("  plain text  ") == "plain text"
+    assert extractor._normalize_extracted_block("a  b\n c") == "a b c"
