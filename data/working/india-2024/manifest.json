@@ -1,0 +1,36 @@
+{
+  "manifest_version": "india-event-universe.v1",
+  "source_snapshot": "GDELT 2024 Events",
+  "input_path": "out_parquet/events/year=2024/**/*.parquet",
+  "output_path": "data/working/india-2024/events.parquet",
+  "filter": {
+    "field": "ActionGeo_CountryCode",
+    "operator": "=",
+    "value": "IN"
+  },
+  "generated_at": "2026-09-17T17:24:46.523836+00:00",
+  "input_rows": 26740052,
+  "output_rows": 2220760,
+  "input_day_min": 20240101,
+  "input_day_max": 20241231,
+  "output_day_min": 20240101,
+  "output_day_max": 20241231,
+  "columns_preserved": true,
+  "columns": [
+    "day",
+    "datetime",
+    "GlobalEventID",
+    "EventCode",
+    "EventRootCode",
+    "QuadClass",
+    "GoldsteinScale",
+    "Actor1Name",
+    "Actor1CountryCode",
+    "Actor2Name",
+    "Actor2CountryCode",
+    "ActionGeo_CountryCode",
+    "SOURCEURL",
+    "month",
+    "year"
+  ]
+}

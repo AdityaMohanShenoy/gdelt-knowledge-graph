@@ -1,244 +1,267 @@
-# GDELT Knowledge Graph
+# Decoding the Domino Effect
 
-An interactive knowledge graph and intelligence dashboard built on the [GDELT 2.0](https://www.gdeltproject.org/) dataset (2024). The project filters 26.7 million geopolitical events down to ~1.1 million causally significant events across the world's 10 most active countries, then visualizes them through a browser-based intelligence dashboard.
+Decoding the Domino Effect is a research project on evidence-backed causal reasoning over temporal knowledge graphs built from GDELT data.
 
-![Python](https://img.shields.io/badge/Python-3.10+-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green)
-![DuckDB](https://img.shields.io/badge/DuckDB-0.10+-yellow)
-![D3.js](https://img.shields.io/badge/D3.js-v7-orange)
-![License](https://img.shields.io/badge/License-MIT-lightgrey)
+The previous Python exploration pipeline and dashboard are preserved in [archive/legacy-exploration/](archive/legacy-exploration/). The active project is now being rebuilt around a smaller, reproducible dataset of civil unrest and protests in India, followed by a pilot annotation set.
 
----
+See [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) for the research context and [docs/techstack.md](docs/techstack.md) for the technology choices.
 
-## Overview
+## Agent and contribution workflow
 
-GDELT (Global Database of Events, Language, and Tone) is the world's largest open-source event database, monitoring broadcast, print, and web news globally. This project takes the full 2024 GDELT export (~24GB, 365 daily Parquet files) and:
+Repository-wide agent instructions are in [AGENTS.md](AGENTS.md). The local GitHub workflow skill is in [.agents/gh/SKILL.md](.agents/gh/SKILL.md) and defines the required commit, branch, testing, and draft pull-request process.
 
-1. **Filters** to the top 10 countries by event volume
-2. **Identifies causal chains** using temporal proximity analysis
-3. **Validates source URLs** to remove events with dead news links
-4. **Visualizes** the cleaned data through a 5-tab interactive dashboard
+## Requirements
 
-### Top 10 Countries Analyzed
-| Code | Country | Code | Country |
-|------|---------|------|---------|
-| US | United States | UK | United Kingdom |
-| IS | Israel | PK | Pakistan |
-| UP | Ukraine | NI | Nigeria |
-| RS | Russia | DJ | Djibouti |
-| IN | India | AS | Australia |
+- Python 3.11–3.14
+- [uv](https://docs.astral.sh/uv/)
+- [Bun](https://bun.sh/) 1.3.14 or newer
+- Docker with Docker Compose (for the local article store)
+- GDELT 2024 event Parquet data under `out_parquet/events/year=2024/`
+- Neo4j is optional and only required for the Neo4j export step
 
----
+The raw GDELT data files are not committed because of their size.
 
-## Features
+## Install
 
-### Knowledge Graph Tab
-- **Circular & force-directed** graph layouts (toggle between them)
-- **Curved bezier edges** with CAMEO event-type labels (e.g., "DEMAND", "COOPERATE")
-- **Edge threshold slider** to control visual density
-- **Click edges** to open a detail drawer showing: CAMEO description, event statistics, monthly frequency chart, causal chain analysis, and sample events with source links
-- **Click nodes** to highlight a country's connections
+From the repository root:
 
-### Timeline Tab
-- Stacked bar chart showing monthly event volume by QuadClass (Verbal/Material Cooperation & Conflict)
-- Goldstein Scale trend line overlay showing sentiment over time
-
-### Country Analysis Tab
-- Cards for each country with flag, total event count, QuadClass breakdown bar, and monthly sparkline
-
-### Event Explorer Tab
-- Paginated, searchable table of all events
-- Filter by QuadClass (cooperation/conflict chips)
-- Color-coded rows by event type
-
-### Heatmap Tab
-- 10x10 country-pair interaction matrix
-- Toggle between event count and average Goldstein Scale modes
-
----
-
-## Architecture
-
-```
-capstone_data/
-├── app.py                  # FastAPI backend (7 API endpoints + static file serving)
-├── requirements.txt        # Python dependencies
-├── frontend/
-│   └── index.html          # Single-page app (D3.js, Chart.js, vanilla JS)
-├── pipeline/
-│   ├── 01_filter_countries.py   # Step 1: Country filter (DuckDB SQL on Parquet)
-│   ├── 02_causal_filter.py      # Step 2: Causal in-degree filter (DuckDB window functions)
-│   ├── 03_validate_urls.py      # Step 3: Async URL validation (aiohttp)
-│   ├── 04_export_neo4j.py       # Step 4: Neo4j graph database export
-│   └── utils.py                 # Shared lookups (CAMEO codes, country names)
-├── out/                         # Pipeline outputs (generated, not committed)
-│   ├── step1_country_filtered.parquet
-│   ├── step2_causal_filtered.parquet   # committed — the only file the API reads
-│   ├── step3_url_validated.parquet
-│   └── url_cache.json
-├── out_parquet/                 # Raw GDELT Parquet data (24GB, not committed)
-│   └── events/year=2024/month=MM/day=YYYYMMDD/part-00000.parquet
-└── data/
-    ├── reference_lookups/       # CAMEO PDF lookup tables
-    └── themes/                  # GKG theme aggregations
+```bash
+uv sync
+bun install
 ```
 
----
+`uv sync` creates `.venv` and installs the Python runtime and development dependencies from `pyproject.toml` and `uv.lock`. `bun install` installs the TypeScript workspace dependencies from `package.json` and `bun.lock`.
 
-## Data Pipeline
+For later installs or CI, use the lockfiles exactly:
 
-The pipeline progressively cleans and filters the raw GDELT data:
-
-### Step 1: Country Filter (`01_filter_countries.py`)
-- Reads all 365 daily Parquet files via **DuckDB** SQL (no need to load 24GB into RAM)
-- Filters events where any actor or location matches the top 10 countries
-- **Input:** 26.7M events (24GB) | **Output:** 26.7M events (data was pre-filtered)
-
-### Step 2: Causal Filter (`02_causal_filter.py`)
-- Computes **causal in-degree** for each event: how many prior events (within a 7-day window) share the same country-pair and CAMEO root code
-- Uses DuckDB window functions (`COUNT(*) OVER PARTITION BY ... RANGE BETWEEN INTERVAL 7 DAYS PRECEDING`) for memory-efficient computation
-- Keeps events with `causal_in_degree <= 2` (root causes and simple chains)
-- **Input:** 26.7M events | **Output:** 1.12M events (4.2% retained)
-
-### Step 3: URL Validation (`03_validate_urls.py`)
-- Validates every unique `SOURCEURL` via async HTTP HEAD requests
-- **aiohttp** with concurrency=50, timeout=10s, 1 retry on failure
-- Marks URLs as dead if status is 404, 410, 451, or connection error
-- Caches results to `url_cache.json` (resume-safe for long runs)
-- **Input:** ~530K unique URLs | **Output:** drops events with dead URLs
-
-### Step 4: Neo4j Export (`04_export_neo4j.py`)
-- Loads cleaned data into **Neo4j** graph database
-- Creates nodes: `Event`, `Country`, `Actor`, `Article`
-- Creates relationships: `ACTOR1_IN`, `ACTOR2_IN`, `OCCURRED_IN`, `MENTIONED_IN`, `PRECEDED_BY`
-- Uses batched `MERGE` statements (batch size 500) with uniqueness constraints
-
-```
-Graph Schema:
-  (Actor) -[:ACTOR1_IN]-> (Event) -[:OCCURRED_IN]-> (Country)
-  (Actor) -[:ACTOR2_IN]-> (Event) -[:MENTIONED_IN]-> (Article)
-                          (Event) -[:PRECEDED_BY]->  (Event)
+```bash
+uv sync --locked
+bun install --frozen-lockfile
 ```
 
----
+If uv is not available, the Python dependencies can be installed with pip:
 
-## API Endpoints
+```bash
+python -m venv .venv
+source .venv/bin/activate                 # macOS/Linux
+# .venv\Scripts\activate                 # Windows
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+## Verify the installation
+
+```bash
+uv lock --check
+uv run python -c "import asyncpg, duckdb, fastapi, neo4j, prefect, qdrant_client, spacy, torch, transformers; print('Python dependencies: OK')"
+bun x biome --version
+bun x vitest --version
+```
+
+If Bun reports blocked lifecycle scripts during installation, trust the required local tooling and reinstall:
+
+```bash
+bun pm trust @biomejs/biome esbuild
+bun install --frozen-lockfile
+```
+
+## The dashboard
+
+`app.py` and `frontend/index.html` serve the live dashboard at
+https://gdelt-knowledge-graph.vercel.app, deployed from `main`. It reads one
+committed parquet (`out/step2_causal_filtered.parquet`) and nothing else at
+runtime — see `CLAUDE.md` before changing its dependencies or query layer.
 
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/stats` | Total events, date range, country count |
-| `GET /api/graph` | Knowledge graph data (nodes + edges with QuadClass & CAMEO labels) |
-| `GET /api/edge-detail` | Detailed edge info: CAMEO description, sample events, causal analysis |
-| `GET /api/timeline` | Monthly QuadClass breakdown + Goldstein trend |
-| `GET /api/country-stats` | Per-country stats with monthly sparkline data |
-| `GET /api/events` | Paginated event list with search & filter |
+| `GET /api/graph` | Knowledge graph nodes and edges with QuadClass and CAMEO labels |
+| `GET /api/edge-detail` | CAMEO description, sample events, causal analysis |
+| `GET /api/timeline` | Monthly QuadClass breakdown and Goldstein trend |
+| `GET /api/country-stats` | Per-country stats with monthly sparklines |
+| `GET /api/events` | Paginated event list with search and filter |
 | `GET /api/heatmap` | 10x10 country-pair interaction matrix |
+| `GET /api/causal/score` | Causal Evidence scoring with full derivation trace |
 
----
+Tabs: knowledge graph (circular and force-directed layouts), timeline,
+country analysis, event explorer, heatmap, and Causal Evidence.
 
-## Tech Stack
+Run it locally with `pip install -r requirements.txt && python test_app.py`.
 
-| Layer | Technology |
-|-------|-----------|
-| **Backend** | Python 3.10+, FastAPI, DuckDB |
-| **Frontend** | Vanilla JS, D3.js v7, Chart.js |
-| **Data Processing** | DuckDB (SQL on Parquet), Polars, aiohttp |
-| **Graph Database** | Neo4j (optional, for Cypher queries) |
-| **Data Format** | Apache Parquet (Hive-partitioned) |
+## Legacy implementation
 
----
+Earlier exploratory versions of the pipeline and frontend are preserved under
+`archive/legacy-exploration/` for reference. They are not the active workflow
+and their commands should not be used to produce the new working dataset.
 
-## Getting Started
+The local raw GDELT snapshot remains under `out_parquet/`. It is intentionally ignored by Git and is the input for the fresh India-focused workflow.
 
-### Prerequisites
-- Python 3.10+
-- GDELT 2024 Parquet data in `out_parquet/events/year=2024/` (not included in repo due to size)
-- Neo4j (optional, only for Step 4)
+## Pipeline layout
 
-### Installation
+`pipeline/` currently holds two lineages that share a number space:
+`01_filter_countries`–`04_export_neo4j` drive the dashboard's parquet, while
+`01_build_india_universe`–`09_reprocess_articles` build the India 2024
+annotation corpus. `10_probe_fetchability` onward follow `docs/BUILD_PLAN.md`.
+Renaming the older four is worth doing before the plan adds 11, 12, 20 and 21.
 
-```bash
-# Clone the repo
-git clone https://github.com/<your-username>/gdelt-knowledge-graph.git
-cd gdelt-knowledge-graph
+## Build the India event universe
 
-# Dashboard only (duckdb + fastapi)
-pip install -r requirements.txt
+The first active data stage creates a local working dataset containing every 2024 event whose action location is India. It preserves all event roots, actors, dates, scores, identifiers, and source URLs; protest and causal filters happen later.
 
-# Extra deps, only if you re-run the data pipeline
-pip install -r pipeline/requirements.txt
-```
-
-### Running the Pipeline
+Run it from the repository root:
 
 ```bash
-# Step 1: Filter to top 10 countries
-python pipeline/01_filter_countries.py
-
-# Step 2: Causal filtering (takes ~5 min on 26.7M events)
-python pipeline/02_causal_filter.py
-
-# Step 3: Validate URLs (long-running, resume-safe)
-python pipeline/03_validate_urls.py
-
-# Step 4: Export to Neo4j (requires running Neo4j instance)
-# Set NEO4J_PASSWORD=yourpassword first
-python pipeline/04_export_neo4j.py
+uv run python pipeline/01_build_india_universe.py
 ```
 
-### Running the Dashboard
+The generated files are:
+
+- `data/working/india-2024/events.parquet` — local generated Parquet output, ignored by Git
+- `data/working/india-2024/manifest.json` — filter, count, date-range, and schema metadata
+
+The raw `out_parquet/` snapshot is never modified. The India filter uses `ActionGeo_CountryCode = IN`, so foreign actors can remain as context while events must be located in India.
+
+## Filter target unrest roots
+
+After building the India event universe, filter it to the direct unrest target roots:
+
+- `14` — protest
+- `18` — assault/violence
+- `19` — fight/clash
+- `20` — mass violence
+
+Run:
 
 ```bash
-# Start the server (uses step2 or step3 data automatically)
-uvicorn app:app --reload --port 8000
-
-# Open in browser
-# http://localhost:8000
+uv run python pipeline/02_filter_target_roots.py
 ```
 
----
+The generated files are:
 
-## Key Concepts
+- `data/working/india-2024/target_events.parquet` — local target-event output, ignored by Git
+- `data/working/india-2024/target_manifest.json` — root counts, dates, filter, and schema metadata
 
-### CAMEO Event Codes
-GDELT uses the [CAMEO](https://parusanalytics.com/eventdata/data.dir/CAMEO.Manual.1.1b3.pdf) coding system with 20 root event types:
+This stage does not include contextual roots such as demands, rejection, threats, or coercion. Those will be added separately after the target universe is inspected.
 
-| Code | Type | Code | Type |
-|------|------|------|------|
-| 01 | Public Statement | 11 | Disapprove |
-| 02 | Appeal | 12 | Reject |
-| 03 | Express Intent to Cooperate | 13 | Threaten |
-| 04 | Consult | 14 | Protest |
-| 05 | Diplomatic Cooperation | 15 | Exhibit Force |
-| 06 | Material Cooperation | 16 | Reduce Relations |
-| 07 | Provide Aid | 17 | Coerce |
-| 08 | Yield | 18 | Assault |
-| 09 | Investigate | 19 | Fight |
-| 10 | Demand | 20 | Mass Violence |
+## Remove events without live source links
 
-### QuadClass
-Events are categorized into 4 quadrants:
-- **Verbal Cooperation** (1) — diplomatic statements, agreements
-- **Material Cooperation** (2) — aid, trade, physical assistance
-- **Verbal Conflict** (3) — threats, demands, accusations
-- **Material Conflict** (4) — military action, violence, sanctions
+The annotation set requires a source URL, so this pass checks every unique target-event URL and drops events whose URL is missing or dead. It uses concurrent requests, retries, and a persistent cache so interrupted runs can continue:
 
-### Goldstein Scale
-A numeric score from **-10** (most conflictual) to **+10** (most cooperative) measuring the theoretical impact of an event on country stability.
+    uv run python pipeline/04_validate_target_urls.py
 
----
+The generated files are:
 
-## Dataset
+- data/working/india-2024/target_events_url_validated.parquet — target events with validated source URLs only, ignored by Git
+- data/working/india-2024/url_cache.json — per-URL validation cache, ignored by Git
+- data/working/india-2024/url_manifest.json — URL counts, status counts, and dropped-event counts
 
-The raw GDELT 2.0 data (not included in this repo) consists of:
-- **365 daily Parquet files** (Hive-partitioned by year/month/day)
-- **~26.7 million events** for the year 2024
-- **13 columns per event:** GlobalEventID, EventCode, EventRootCode, QuadClass, GoldsteinScale, Actor1Name, Actor1CountryCode, Actor2Name, Actor2CountryCode, ActionGeo_CountryCode, SOURCEURL, day, datetime
+The validator treats 404, 410, 451, connection errors, and repeated timeouts as dead. Redirects, access restrictions, rate limits, and server errors remain usable as source links because the URL still exists.
 
-To obtain the data, visit the [GDELT Project](https://www.gdeltproject.org/) and download the 2024 event files.
+## Build event-level annotation records
 
----
+The annotation view keeps one record per `GlobalEventID`. Repeated source URLs are retained as separate event records, so an identical article can support multiple observations without collapsing their event codes, actors, dates, or scores:
 
-## License
+    uv run python pipeline/05_build_annotation_units.py
 
-This project is for educational and research purposes. GDELT data is freely available under the [GDELT Terms of Use](https://www.gdeltproject.org/about.html#termsofuse).
+The generated files are:
+
+- data/working/india-2024/annotation_units.json — event-level annotation records, ignored by Git
+- data/working/india-2024/annotation_manifest.json — event and unique-source counts
+
+The source event Parquet remains unchanged. The output path keeps its historical filename for viewer compatibility, but its schema is `india-annotation-events.v2` and its records are `event_observation` objects.
+
+## Build the article URL queue
+
+Article retrieval is a separate evidence stage over the complete India event universe. It normalizes HTTP(S) URLs, removes fragments, and produces one queue row per normalized URL. This queue is intentionally not restricted to the target-root event subset:
+
+    uv run python pipeline/06_build_article_queue.py
+
+The generated files are:
+
+- data/working/india-2024/article_urls.parquet — normalized `url_key` and original `source_url` pairs, ignored by Git
+- data/working/india-2024/article_urls_manifest.json — queue counts and normalization collisions
+
+## Run the article extractor
+
+Start the local Postgres store before the first ingest run:
+
+    docker compose up -d postgres
+
+Run a small pilot first. `--limit 100` claims 100 URL attempts from the queue; it does not change the queue or delete existing results:
+
+    uv run python pipeline/07_ingest_articles.py --limit 100
+
+The full queue can be resumed with:
+
+    uv run python pipeline/07_ingest_articles.py --concurrency 100 --per-host-concurrency 4
+
+The dispatcher uses one GET per attempt for both liveness and extraction, global concurrency of 100, a per-host cap of 4, database leases for restartable checkpointing, and three retries after the initial request. Host-aware claim selection applies the per-host cap before a URL occupies a worker, so a slow publisher cannot monopolize the global worker pool; restart the dispatcher after changing these settings. Separate indexed claim paths handle expired leases, ready retries, and pending URLs without scanning terminal rows, so a stopped run can resume efficiently. A fetching lease is reclaimed after five minutes if its worker exits. The per-run `Completed` counter records attempts, including retries; query Postgres statuses for unique-URL progress. It stores cleaned article text and metadata in Postgres and gzipped raw HTML under `data/evidence/articles/raw/`. Extraction statuses distinguish readable text, insufficient text, paywalls, bot/access blocks, dead links, unsupported content, oversized responses, parse errors, and exhausted retries. Trafilatura filters promotional blocks, navigation, ads, social widgets, and footer text; inaccessible or paywalled pages remain recorded with their reason instead of being treated as readable evidence.
+
+The dispatcher owns all network requests. The Trafilatura extractor receives the fetched HTML bytes and final URL, removes page boilerplate, and applies a precision-first quality gate. It does not perform an additional request and cannot recover text that is only rendered by JavaScript, hidden behind a login or paywall, or absent from the response. The quality gate rejects short or structurally weak candidates, stale-page title/body mismatches, navigation and recommendation listings, and obvious error pages. It removes syndicated pipe wrappers, repeated lead text, comment widgets, publisher support sections, and leading navigation noise. Strong press-release and promotional signals remain readable but are recorded in `extraction_reason` for downstream filtering.
+
+## Benchmark and reprocess stored article text
+
+Raw HTML is retained so the extractor can be improved without downloading the queue again. Run a deterministic, non-mutating benchmark over a stratified sample of stored pages:
+
+    uv run python pipeline/09_reprocess_articles.py benchmark --sample-size 200
+
+The JSONL report is written under `data/evidence/articles/benchmarks/` and contains the previous database result beside pure Trafilatura precision, pure recall, and the production precision-first candidate. Review this report before promoting a new extraction pass. Promotion is resumable and only reads existing compressed raw HTML:
+
+    uv run python pipeline/09_reprocess_articles.py promote
+
+Promotion updates `status`, `title`, `cleaned_text`, `text_length`, `extraction_reason`, and `extractor_version` for rows with stored HTML. Rows currently being fetched are skipped and can be processed by a later run. The current UI and article API read these same canonical fields, so no frontend migration is required.
+
+## Open the target event viewer
+
+The viewer reads event-level records and retrieves article text on demand through the local API. Generate the event records and start the API-backed viewer:
+
+    uv run python pipeline/05_build_annotation_units.py
+    uv run python pipeline/08_run_viewer.py
+
+Open http://127.0.0.1:8000/ and use Card stack for left-to-right browsing or File list for directory-style browsing. The viewer supports root filtering, text search, keyboard arrows, pointer swipes, source links, and a `Fetch article text` action. That action queues the selected normalized URL, starts a bounded background request using the same extractor and retry rules as bulk ingestion, and polls Postgres until text or a terminal status is available. The JSON file can still be loaded manually for metadata-only review.
+
+## TypeScript workspace status
+
+The Bun workspace currently provides the dependency and tooling foundation. The application packages have not been built yet, so there is no Bun command that starts the planned web interface or gateway at this stage.
+
+The available tooling commands are:
+
+```bash
+bun run lint
+bun run format
+bun run typecheck
+bun run test
+```
+
+These commands become the standard checks as the new TypeScript packages are added.
+
+## Project status
+
+Archived for reference:
+
+- Previous Python filtering, causal filtering, URL validation, Neo4j export, and FastAPI/D3 dashboard
+- Historical curated output and top-country summary
+
+Implemented local workflow:
+
+- India action-location universe builder and target-root filter for the frozen 2024 raw snapshot
+- Event-level viewer records keyed by `GlobalEventID`
+- Full-universe normalized article URL queue
+- Dockerized Postgres article store with leases and checkpointed retries
+- Trafilatura article extraction and liveness classification with offline reprocessing
+- Local API-backed viewer for on-demand cleaned article text
+
+Next active work:
+
+- A stratified pilot sample and annotation guide
+- Node and candidate-edge annotations for a few hundred records
+
+Prepared but still to be implemented after the pilot:
+
+- Canonical event and evidence schemas
+- Temporal-uncertainty representation
+- Candidate and verified causal-edge extraction
+- Prefect workflows
+- Qdrant semantic retrieval
+- Hono API gateway and React/Vite frontend
+- Evaluation for causal precision, evidence grounding, explanation faithfulness, and temporal coherence
