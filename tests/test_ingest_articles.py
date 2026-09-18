@@ -75,6 +75,9 @@ def test_fetch_once_uses_one_get_and_extracts_html():
             assert limit > len(html)
             return html.encode()
 
+        async def iter_chunked(self, size):
+            yield html.encode()
+
     class FakeResponse:
         status = 200
         headers = {"Content-Type": "text/html; charset=utf-8"}
@@ -124,6 +127,9 @@ def test_fetch_once_passes_final_url_to_extractor():
     class FakeContent:
         async def read(self, limit):
             return b"<html><body>fixture</body></html>"
+
+        async def iter_chunked(self, size):
+            yield b"<html><body>fixture</body></html>"
 
     class FakeResponse:
         status = 200
@@ -270,3 +276,89 @@ def test_claim_next_recovers_expired_and_retryable_rows_before_pending_rows():
         asyncio.run(exercise_recovery_claim(fetch))
     except (OSError, asyncpg.PostgresConnectionError) as error:
         pytest.skip(f"local Postgres is unavailable: {error}")
+
+
+def _streaming_response(html: bytes, chunk_size: int = 512):
+    """Model aiohttp's real StreamReader: read(n) returns only what is already
+    buffered, not n bytes. Only iterating to EOF yields the whole body."""
+
+    chunks = [html[i : i + chunk_size] for i in range(0, len(html), chunk_size)]
+
+    class FakeContent:
+        async def read(self, limit):
+            # Real aiohttp returns the first buffered chunk, capped at limit.
+            return chunks[0][:limit] if chunks else b""
+
+        async def iter_chunked(self, size):
+            for chunk in chunks:
+                yield chunk
+
+    class FakeResponse:
+        status = 200
+        headers = {"Content-Type": "text/html; charset=utf-8"}
+        url = "https://example.test/final"
+        charset = "utf-8"
+        content = FakeContent()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_value, traceback):
+            return None
+
+    class FakeSession:
+        def get(self, url, allow_redirects, headers):
+            return FakeResponse()
+
+    return FakeSession()
+
+
+def _long_article(marker: str) -> bytes:
+    topics = [
+        "The state assembly debated the revised procurement bill for several hours",
+        "Farmers from three districts gathered outside the secretariat on Tuesday",
+        "Officials said the compensation package would be reviewed in December",
+        "Traffic was diverted around the main arterial road during the march",
+        "A spokesperson declined to comment on the pending court application",
+        "Local traders reported a sharp drop in footfall through the week",
+        "The opposition demanded a written assurance before ending the protest",
+        "Police estimated the crowd at close to four thousand participants",
+        "Rail services resumed after a six hour disruption on the eastern line",
+        "The committee will publish its findings early in the next session",
+    ]
+    body = "\n".join(
+        f"<p>{line}, according to people familiar with the discussions. "
+        f"The detail was confirmed separately by a second official. "
+        f"No further statement has been issued so far.</p>"
+        for line in topics
+    )
+    return (
+        f"<html><body><article><h1>Streamed article</h1>{body}"
+        f"<p>{marker} closes the article after many chunks of preceding text.</p>"
+        "</article></body></html>"
+    ).encode()
+
+
+def test_fetch_reads_body_past_the_first_chunk():
+    ingester = load_fetch()
+    html = _long_article("FINALMARKER")
+    assert len(html) > 512, "fixture must span multiple chunks"
+
+    job = ingester.Job(1, "https://example.test/article", "https://example.test/article", 1)
+    result = asyncio.run(ingester.fetch_once(_streaming_response(html), job, 1024 * 1024))
+
+    assert result.body is not None
+    assert result.body == html, "stored HTML must be the complete response, not the first chunk"
+    assert b"</html>" in result.body
+    assert result.status == "extracted"
+    assert "FINALMARKER" in result.extraction.text
+
+
+def test_fetch_still_rejects_oversized_bodies():
+    ingester = load_fetch()
+    html = _long_article("BIG")
+
+    job = ingester.Job(1, "https://example.test/article", "https://example.test/article", 1)
+    result = asyncio.run(ingester.fetch_once(_streaming_response(html), job, 600))
+
+    assert result.status == "response_too_large"

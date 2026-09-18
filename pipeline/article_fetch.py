@@ -15,6 +15,7 @@ PER_HOST_CONCURRENCY = 4
 TIMEOUT_SECONDS = 20
 MAX_RETRIES = 3
 MAX_RESPONSE_BYTES = 10 * 1024 * 1024
+READ_CHUNK_BYTES = 64 * 1024
 LEASE_SECONDS = 300
 USER_AGENT = "Mozilla/5.0 (compatible; GDELTResearch/1.0)"
 DEAD_STATUSES = frozenset({404, 410, 451})
@@ -140,15 +141,22 @@ async def fetch_once(
                 return FetchResult(
                     "http_error", status, content_type, final_url, error=f"http-{status}"
                 )
-            body = await response.content.read(max_response_bytes + 1)
-            if len(body) > max_response_bytes:
-                return FetchResult(
-                    "response_too_large",
-                    status,
-                    content_type,
-                    final_url,
-                    error=f"response-exceeds-{max_response_bytes}-bytes",
-                )
+            # StreamReader.read(n) returns only what is already buffered, so it
+            # truncates the body to the first chunk. Stream to EOF instead.
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in response.content.iter_chunked(READ_CHUNK_BYTES):
+                total += len(chunk)
+                if total > max_response_bytes:
+                    return FetchResult(
+                        "response_too_large",
+                        status,
+                        content_type,
+                        final_url,
+                        error=f"response-exceeds-{max_response_bytes}-bytes",
+                    )
+                chunks.append(chunk)
+            body = b"".join(chunks)
             if not content_type_is_html(content_type, body):
                 return FetchResult("unsupported_content", status, content_type, final_url)
             extraction = extract_article(body, url=final_url)
