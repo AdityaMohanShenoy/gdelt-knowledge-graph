@@ -71,3 +71,10 @@ data/working/postgres/
 
 # Large GDELT manifest
 data/snapshot.txt
+
+# Local port remap when a host Postgres owns 5432
+docker-compose.override.yml
+out/fetch_probe_cache.json
+
+# Local bulk GDELT downloads and dumps (24GB, never committed)
+filtered_Data/
