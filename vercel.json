@@ -3,7 +3,7 @@
   "functions": {
     "app.py": {
       "maxDuration": 60,
-      "excludeFiles": "{out_parquet/**,out/step1_*,out/url_cache.json,out/all_curated.csv.gz,data/**,pipeline/**,.claude/**,README.md,**/test_*.py}"
+      "excludeFiles": "{out_parquet/**,out/step1_*,out/url_cache.json,out/all_curated.csv.gz,data/**,pipeline/**,.claude/**,README.md,**/test_*.py,archive/**,out/fetch_probe*.json,docs/**,tests/**,uv.lock,bun.lock,expanded_causal_tkg_plan.md}"
     }
   }
 }
