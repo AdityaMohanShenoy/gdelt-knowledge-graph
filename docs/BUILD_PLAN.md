@@ -37,7 +37,7 @@ Already built and on `main`:
 | Thing | State |
 |---|---|
 | `out/step2_causal_filtered.parquet` | 1,120,666 GDELT events, 2024, top-10 countries |
-| `pipeline/01`–`04` | country filter, causal filter, URL validation, Neo4j export |
+| `pipeline/dashboard/01`–`04` | country filter, causal filter, URL validation, Neo4j export |
 | Causal Evidence tab | working demo: 4 of 6 channels, metadata only, full derivation trace |
 | `app.py` scoring | `_causal_matrix_rows`, `_token_idf`, `_pick_probes`, `causal_score` |
 
@@ -86,7 +86,7 @@ seconds from cache.
 > concentrated on fetchable domains, or (b) metadata-only Stage 2 with Stage 1
 > limited to what can be read. Record the decision in the measurements file.
 
-Note: `pipeline/03_validate_urls.py` already does liveness checking. Reuse its
+Note: `pipeline/dashboard/03_validate_urls.py` already does liveness checking. Reuse its
 cache format rather than inventing a second one.
 
 ### P0.2 — Real branching factor
@@ -577,7 +577,7 @@ Resolve these before the phase that depends on them.
 | SQLite vs Postgres/Supabase | P1.1 | SQLite is simpler; Supabase matters only if annotators work concurrently from different machines |
 | Extraction: rules vs trained model | P2.1 | Rules are faster to build and debug; a model needs labels you don't have yet |
 | Whether checks 3 and 4 stay separate | P3.4 | Empirical. If fitted weights show one absorbing the other, merge them |
-| Neo4j or stay in SQL | P5.2 | `pipeline/04_export_neo4j.py` exists. Recursive CTEs over a materialized edge table may be enough, and deploy far more easily |
+| Neo4j or stay in SQL | P5.2 | `pipeline/dashboard/04_export_neo4j.py` exists. Recursive CTEs over a materialized edge table may be enough, and deploy far more easily |
 | Article text redistribution | P1.2 | Full text stays private to the team unless licensing says otherwise |
 
 ---

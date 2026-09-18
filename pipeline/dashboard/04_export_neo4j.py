@@ -11,7 +11,7 @@ Requires a running Neo4j instance. Set connection details via environment variab
   NEO4J_PASSWORD (required)
 
 Usage:
-  NEO4J_PASSWORD=yourpassword python pipeline/04_export_neo4j.py
+  NEO4J_PASSWORD=yourpassword python pipeline/dashboard/04_export_neo4j.py
 """
 
 import os
@@ -163,7 +163,7 @@ def ingest_causal_edges(driver, rows: list[dict]):
 def main():
     if not NEO4J_PASSWORD:
         print("ERROR: Set NEO4J_PASSWORD environment variable before running.")
-        print("  Example: NEO4J_PASSWORD=yourpassword python pipeline/04_export_neo4j.py")
+        print("  Example: NEO4J_PASSWORD=yourpassword python pipeline/dashboard/04_export_neo4j.py")
         return
 
     print(f"Connecting to Neo4j at {NEO4J_URI}...")

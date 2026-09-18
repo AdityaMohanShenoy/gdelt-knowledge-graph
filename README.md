@@ -98,11 +98,15 @@ The local raw GDELT snapshot remains under `out_parquet/`. It is intentionally i
 
 ## Pipeline layout
 
-`pipeline/` currently holds two lineages that share a number space:
-`01_filter_countries`–`04_export_neo4j` drive the dashboard's parquet, while
-`01_build_india_universe`–`09_reprocess_articles` build the India 2024
-annotation corpus. `10_probe_fetchability` onward follow `docs/BUILD_PLAN.md`.
-Renaming the older four is worth doing before the plan adds 11, 12, 20 and 21.
+`pipeline/` is one continuous corpus pipeline. `01_build_india_universe`
+through `09_reprocess_articles` build the India 2024 annotation corpus, and
+`10_probe_fetchability` onward follow `docs/BUILD_PLAN.md` — the plan continues
+this numbering with 11, 12, 20, 21, 30, 31 and 40.
+
+`pipeline/dashboard/` is a separate, finished lineage: the country filter,
+causal filter, URL validation and Neo4j export that produced
+`out/step2_causal_filtered.parquet`, the one file the dashboard reads at
+runtime. It shares no code with the corpus pipeline and is rarely re-run.
 
 ## Build the India event universe
 

@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-09-18 — Separate the two pipeline lineages
+
+`pipeline/` held two unrelated pipelines sharing one number space, with `01`
+through `04` appearing twice. `docs/BUILD_PLAN.md` adds `11`, `12`, `20`, `21`,
+`30`, `31` and `40`, so the ambiguity was about to get worse.
+
+The corpus pipeline keeps the top level and is now continuous:
+`01_build_india_universe` → `09_reprocess_articles` → `10_probe_fetchability`,
+with the plan's future scripts extending the same run.
+
+The dashboard lineage moved to `pipeline/dashboard/`: the country filter, causal
+filter, URL validation and Neo4j export that produced
+`out/step2_causal_filtered.parquet`. It is a finished, rarely re-run concern that
+shares no code with the corpus pipeline — the four scripts have no cross-imports,
+so the move needed no rewiring.
+
+Also removed `pipeline/article_extractor 2.py`, the obsolete stdlib extractor.
+Nothing imported it, and it scored 5.6% against the current extractor's 34.9% on
+the same corpus. Git history keeps it.
+
+`pipeline/utils.py` moved with the lineage it belongs to. It is currently
+imported by nothing and is a deletion candidate once someone confirms the CAMEO
+lookups are genuinely unused.
+
+Paths updated in `README.md`, `docs/BUILD_PLAN.md` and the usage strings inside
+`04_export_neo4j.py`. `vercel.json` already excluded `pipeline/**`, so the
+bundle is unchanged. 45 tests and `test_app.py` pass.
+
 ## 2026-09-18 — Fetcher correctness, P0.1, and the branch merge
 
 Two bugs in the article fetcher, the first gate of `docs/BUILD_PLAN.md`, and the
