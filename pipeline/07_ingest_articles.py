@@ -13,7 +13,10 @@ from article_fetch import (
     CONCURRENCY,
     MAX_RESPONSE_BYTES,
     MAX_RETRIES,
+    HOST_DELAY_SECONDS,
+    HostThrottle,
     PER_HOST_CONCURRENCY,
+    host_of,
     TIMEOUT_SECONDS,
     claim_next,
     fetch_once,
@@ -86,6 +89,7 @@ async def worker(
     claim_lock: asyncio.Lock,
     progress_state: dict[str, int],
     progress_lock: asyncio.Lock,
+    throttle: HostThrottle,
 ) -> None:
     while True:
         async with claim_lock:
@@ -96,6 +100,7 @@ async def worker(
                 return
             claim_state["claimed"] += 1
 
+        await throttle.wait(host_of(job.url_key))
         result = await fetch_once(session, job, max_response_bytes)
         content_hash = hashlib.sha256(result.body).hexdigest() if result.body else None
         stored_raw_path = (
@@ -122,6 +127,7 @@ async def ingest_articles(args: argparse.Namespace) -> dict[str, Any]:
         max_size=min(args.db_pool_size, args.concurrency),
     )
     try:
+        throttle = HostThrottle(args.host_delay)
         await ensure_schema(pool)
         inserted = await load_queue(pool, Path(args.queue))
         claim_state = {"claimed": 0}
@@ -151,6 +157,7 @@ async def ingest_articles(args: argparse.Namespace) -> dict[str, Any]:
                         claim_lock,
                         progress_state,
                         progress_lock,
+                        throttle,
                     )
                     for worker_id in range(args.concurrency)
                 ]
@@ -174,6 +181,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--raw-dir", default=str(DEFAULT_RAW_DIR))
     parser.add_argument("--concurrency", type=int, default=CONCURRENCY)
     parser.add_argument("--per-host-concurrency", type=int, default=PER_HOST_CONCURRENCY)
+    parser.add_argument("--host-delay", type=float, default=HOST_DELAY_SECONDS,
+                        help="minimum seconds between requests to one host")
     parser.add_argument("--db-pool-size", type=int, default=DB_POOL_SIZE)
     parser.add_argument("--timeout", type=int, default=TIMEOUT_SECONDS)
     parser.add_argument("--retries", type=int, default=MAX_RETRIES)

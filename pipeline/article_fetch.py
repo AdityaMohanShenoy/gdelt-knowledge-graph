@@ -1,9 +1,11 @@
 import asyncio
 import gzip
 import hashlib
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import aiohttp
 import asyncpg
@@ -12,6 +14,7 @@ from article_extractor import EXTRACTOR_VERSION, ExtractionResult, extract_artic
 ROOT = Path(__file__).resolve().parents[1]
 CONCURRENCY = 100
 PER_HOST_CONCURRENCY = 4
+HOST_DELAY_SECONDS = 2.0
 TIMEOUT_SECONDS = 20
 MAX_RETRIES = 3
 MAX_RESPONSE_BYTES = 10 * 1024 * 1024
@@ -77,6 +80,42 @@ class FetchResult:
     body: bytes | None = None
     extraction: ExtractionResult | None = None
     error: str | None = None
+
+
+def host_of(url: str) -> str:
+    try:
+        return (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+class HostThrottle:
+    """Minimum gap between requests to the same host.
+
+    Concurrency caps how many requests run at once, not how quickly they follow
+    each other: at per-host concurrency 4, a host takes four at a time and the
+    next starts the instant one finishes, so it is hit continuously with no gap.
+    That is what trips bot walls. This enforces an actual interval.
+    """
+
+    def __init__(self, min_interval: float = 0.0) -> None:
+        self.min_interval = min_interval
+        self._next: dict[str, float] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
+
+    async def wait(self, host: str) -> None:
+        if self.min_interval <= 0 or not host:
+            return
+        lock = self._locks.setdefault(host, asyncio.Lock())
+        # Held across the sleep, so two workers on one host queue rather than
+        # both waking to the same slot.
+        async with lock:
+            clock = time.monotonic()
+            earliest = self._next.get(host, 0.0)
+            if earliest > clock:
+                await asyncio.sleep(earliest - clock)
+                clock = earliest
+            self._next[host] = clock + self.min_interval
 
 
 def now() -> datetime:

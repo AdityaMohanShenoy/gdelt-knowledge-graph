@@ -362,3 +362,45 @@ def test_fetch_still_rejects_oversized_bodies():
     result = asyncio.run(ingester.fetch_once(_streaming_response(html), job, 600))
 
     assert result.status == "response_too_large"
+
+
+def test_host_throttle_spaces_requests_to_one_host():
+    ingester = load_fetch()
+    throttle = ingester.HostThrottle(min_interval=0.05)
+
+    async def exercise():
+        import time as _t
+
+        start = _t.monotonic()
+        for _ in range(4):
+            await throttle.wait("example.test")
+        one_host = _t.monotonic() - start
+
+        start = _t.monotonic()
+        await asyncio.gather(*[throttle.wait(f"h{i}.test") for i in range(4)])
+        many_hosts = _t.monotonic() - start
+        return one_host, many_hosts
+
+    one_host, many_hosts = asyncio.run(exercise())
+
+    # Four requests to one host wait three gaps; the first is free.
+    assert one_host >= 0.15, f"one host finished in {one_host:.3f}s — not throttled"
+    # Different hosts must not queue behind each other.
+    assert many_hosts < 0.05, f"distinct hosts serialized ({many_hosts:.3f}s)"
+
+
+def test_host_throttle_disabled_by_zero_interval():
+    ingester = load_fetch()
+    throttle = ingester.HostThrottle(min_interval=0)
+
+    async def exercise():
+        for _ in range(50):
+            await throttle.wait("example.test")
+
+    asyncio.run(exercise())  # must not hang or sleep
+
+
+def test_host_of_extracts_hostname():
+    ingester = load_fetch()
+    assert ingester.host_of("https://WWW.Example.com/a/b?x=1") == "www.example.com"
+    assert ingester.host_of("not a url") == ""
