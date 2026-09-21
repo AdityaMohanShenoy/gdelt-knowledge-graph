@@ -13,11 +13,15 @@ from .config import (
 )
 from .fuse import fuse, logistic, terms
 from .grade import grade, strength
-from .retrieval import actor_tokens, matrix_index, matrix_rows, pick_probes, token_idf
+from .retrieval import (
+    actor_hit_columns, actor_tokens, candidate_groups, matrix_index,
+    matrix_rows, pick_probes, token_idf,
+)
 
 __all__ = [
     "channels", "fuse", "logistic", "terms", "grade", "strength",
     "actor_tokens", "matrix_index", "matrix_rows", "pick_probes", "token_idf",
+    "actor_hit_columns", "candidate_groups",
     "ACTOR_MAX_SHARE", "ACTOR_PROBES", "CAUSAL_FLOOR", "CAUSAL_INTERCEPT",
     "CAUSAL_W", "CAUSAL_WINDOW_DAYS", "CHANNEL_META", "MIN_GROUP_EVENTS",
     "ROOT_LABEL", "STOP_ACTORS",

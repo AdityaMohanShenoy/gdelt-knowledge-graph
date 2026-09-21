@@ -658,30 +658,9 @@ async def causal_score(event_id: str = "", country: str = "IN"):
     tok_idf = scoring.token_idf(con, sorted(t_tokens))
     probe = scoring.pick_probes(tok_idf)
     idf_sum = sum(tok_idf[t]["idf"] for t in probe) or 1.0
-    if probe:
-        hit_cols = ", ".join(
-            f"COUNT(*) FILTER (WHERE Actor1Name ILIKE '%{safe(t)}%'"
-            f" OR Actor2Name ILIKE '%{safe(t)}%') AS hit{i}"
-            for i, t in enumerate(probe))
-    else:
-        hit_cols = "0 AS hit0"
-
     # Candidate groups: one per (day, root code) in the preceding window.
     lo = t_day - scoring.CAUSAL_WINDOW_DAYS
-    cands = _rows(con.execute(f"""
-        SELECT day,
-               COALESCE(NULLIF(EventRootCode, ''), '00') AS rc,
-               COUNT(*) AS n,
-               COUNT(DISTINCT regexp_extract(SOURCEURL, '://([^/]+)', 1)) AS domains,
-               AVG(GoldsteinScale) AS avg_g,
-               MIN(GlobalEventID) AS rep_id,
-               {hit_cols}
-        FROM events
-        WHERE ActionGeo_CountryCode = '{safe(cc)}'
-          AND day >= {lo} AND day < {t_day}
-        GROUP BY day, rc
-        ORDER BY day DESC, rc
-    """))
+    cands = scoring.candidate_groups(con, cc, lo, t_day, probe)
 
     raw_events = int(num(con.execute(f"""
         SELECT COUNT(*) FROM events

@@ -111,3 +111,33 @@ def pick_probes(idf: dict) -> list[str]:
               # anything at all, so it is useless rather than informative.
               if v["df"] > 0 and v["share"] <= ACTOR_MAX_SHARE]
     return sorted(usable, key=lambda t: (-idf[t]["idf"], t))[:ACTOR_PROBES]
+
+
+def actor_hit_columns(probe: list[str]) -> str:
+    """Per-probe hit counts, or a constant when no token is worth matching."""
+    if not probe:
+        return "0 AS hit0"
+    return ", ".join(
+        f"COUNT(*) FILTER (WHERE Actor1Name ILIKE '%{safe(t)}%'"
+        f" OR Actor2Name ILIKE '%{safe(t)}%') AS hit{i}"
+        for i, t in enumerate(probe))
+
+
+def candidate_groups(con, cc: str, lo: int, hi: int, probe: list[str]) -> list[dict]:
+    """One candidate per (day, root code) in a window. Shared with the negative
+    controls, which score the same shape of group over a window that cannot be
+    a cause."""
+    return rows(con.execute(f"""
+        SELECT day,
+               COALESCE(NULLIF(EventRootCode, ''), '00') AS rc,
+               COUNT(*) AS n,
+               COUNT(DISTINCT regexp_extract(SOURCEURL, '://([^/]+)', 1)) AS domains,
+               AVG(GoldsteinScale) AS avg_g,
+               MIN(GlobalEventID) AS rep_id,
+               {actor_hit_columns(probe)}
+        FROM events
+        WHERE ActionGeo_CountryCode = '{safe(cc)}'
+          AND day >= {lo} AND day < {hi}
+        GROUP BY day, rc
+        ORDER BY day DESC, rc
+    """))

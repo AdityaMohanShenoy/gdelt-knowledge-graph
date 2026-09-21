@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-09-21 — P3.5: negative controls, and GATE 3.5 fails
+
+`pipeline/31_negative_controls.py` scores pairs that cannot be causal and
+reports how often the fusion calls them one. Three arms, all through the same
+code path as the live endpoint: the real 7-day window, a `shuffled` window drawn
+from elsewhere in the year, and a `future` window after the target that cannot
+be its cause.
+
+**The gate fails, and the headline number hides it.** False-positive rate is a
+reassuring 4.0% shuffled and 3.1% future. But the number that matters is how
+much more often a grade fires on real pairs than on random ones:
+
+| Grade | real / shuffled |
+|---|---|
+| confirmed | never fires on shuffled |
+| reported | never fires on shuffled |
+| **pattern** | **0.95×** |
+| weak | 0.98× |
+
+`pattern` fires *slightly less often* on real pairs than on shuffled ones. That
+grade exists precisely to catch links Stage 1 never saw, and it is finding them
+just as readily in randomness. It is reading corpus structure: `prior` and
+`contrastive` are country-level type-pair statistics that know nothing about the
+specific pair in front of them.
+
+The clean separation in `confirmed` and `reported` is not a counter-argument.
+Both are carried by the `documented` channel, which is empty by construction in
+both control arms, so their gap is guaranteed rather than measured. Reporting it
+as evidence of a working scorer would be circular.
+
+Per the plan, Phase 4 does not proceed on this. The fix belongs in P3.2 — a
+textual channel that reads the specific pair — and P3.4, weights fitted on
+labelled decisions rather than the illustrative ones in use now. Both of which
+this result reclassifies from "planned" to "load bearing".
+
+`scoring.candidate_groups` was extracted from `app.py` so the control scores the
+same query the endpoint does rather than a copy that could drift. Golden capture
+still hashes identically (`a07087a522f6d601`); `app.py` is down to 783 lines.
+
 ## 2026-09-21 — P3.1: scoring out of app.py
 
 `app.py` goes from **1,116 to 796 lines**. The Causal Evidence scoring now lives

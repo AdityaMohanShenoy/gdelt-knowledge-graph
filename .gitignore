@@ -81,3 +81,4 @@ out/refetch.log
 # Regenerable in ~15s from probe_branching.py; the judged worksheet is NOT
 # ignored — it is the evidence behind GATE 0.2 and should be committed.
 out/branching_expansion.json
+out/negative_controls.json
