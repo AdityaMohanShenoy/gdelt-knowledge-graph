@@ -69,6 +69,13 @@
   input[type=text]{flex:1;min-width:12rem}
   .empty{text-align:center;padding:5rem 1rem;font-family:var(--serif);font-size:1.15rem}
   .hint{color:var(--soft);font-size:.82rem}
+  .pick{max-width:34rem;margin:5rem auto;text-align:center}
+  .pick h1{font-family:var(--serif);font-weight:500;font-size:1.6rem;margin:0 0 .4rem}
+  .pick p{color:var(--soft);margin:0 0 2rem}
+  .who{display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap}
+  .who button{padding:.7rem 1.5rem;font-size:1rem}
+  .team{margin-top:2.6rem;color:var(--soft);font-size:.86rem}
+  .team span{margin:0 .5rem}
   @media (max-width:620px){
     .axis{grid-template-columns:1fr;gap:.4rem}
     .node.effect{text-align:left}
@@ -84,7 +91,7 @@
 <body>
 <div class="bar">
   <b>Causal claim review</b>
-  <span id="progress">loading</span>
+  <span id="progress"></span>
 </div>
 
 <main id="screen"><div class="empty">Loading the first claim.</div></main>
@@ -111,13 +118,14 @@
 </div>
 
 <script>
-const annotator = new URLSearchParams(location.search).get("annotator") || "anonymous";
+let annotator = new URLSearchParams(location.search).get("annotator") || "";
 let claim = null, meta = null, showMachine = false;
 
 const $ = (id) => document.getElementById(id);
 
 async function boot(){
   meta = await (await fetch("/api/meta")).json();
+  if (!meta.annotators.includes(annotator)) return pickWho();
   $("reason").innerHTML = meta.reject_reasons
     .map((r,i) => `<option value="${r}">${i+1} · ${r.replaceAll("_"," ").toLowerCase()}</option>`).join("");
   $("relation").innerHTML = meta.relation_types
@@ -125,11 +133,27 @@ async function boot(){
   await load();
 }
 
-async function load(){
-  claim = await (await fetch("/api/claims/next")).json();
+async function pickWho(){
   const p = await (await fetch("/api/progress")).json();
+  const done = p.team || {};
+  document.querySelector(".actions").style.display = "none";
+  $("screen").innerHTML = `
+    <div class="pick">
+      <h1>Who is reviewing?</h1>
+      <p>Your queue is yours alone. A quarter of the claims go to two people, so
+         agreement can be measured.</p>
+      <div class="who">${meta.annotators.map(a =>
+        `<button data-who="${a}">${a}</button>`).join("")}</div>
+      <div class="team">${meta.annotators.map(a =>
+        `<span>${a} ${done[a] || 0}</span>`).join("")}</div>
+    </div>`;
+}
+
+async function load(){
+  claim = await (await fetch(`/api/claims/next?annotator=${encodeURIComponent(annotator)}`)).json();
+  const p = await (await fetch(`/api/progress?annotator=${encodeURIComponent(annotator)}`)).json();
   $("progress").textContent =
-    `${p.accepted} accepted, ${p.rejected} rejected — ${p.targets_left} events still to look at`;
+    `${annotator} — ${p.judged} of ${p.assigned} done, ${p.targets_left} events left`;
   render();
 }
 
@@ -137,7 +161,7 @@ function render(){
   const s = $("screen");
   if (claim.done){
     s.innerHTML = `<div class="empty">Everything seeded has been judged.<br>
-      <span class="hint">Seed more with <code>14_run_annotator.py seed</code>.</span></div>`;
+      <span class="hint">Nothing left in ${annotator}'s queue.</span></div>`;
     document.querySelectorAll(".actions button").forEach(b => b.disabled = true);
     return;
   }
@@ -191,6 +215,13 @@ async function send(body){
 }
 
 document.addEventListener("click", (e) => {
+  const who = e.target.closest("[data-who]")?.dataset.who;
+  if (who){
+    annotator = who;
+    history.replaceState(null, "", `?annotator=${encodeURIComponent(who)}`);
+    document.querySelector(".actions").style.display = "";
+    return load();
+  }
   const act = e.target.closest("[data-act]")?.dataset.act;
   if (!act || !claim || claim.done) return;
   if (act === "accept") return send({action:"accept", human_strength:claim.machine_strength});

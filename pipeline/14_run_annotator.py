@@ -43,6 +43,9 @@ REJECT_REASONS = [
     "DUPLICATE_EVENT", "CORRELATED_ONLY", "INSUFFICIENT_EVIDENCE",
     "WRONG_DIRECTION", "OTHER",
 ]
+ANNOTATORS = ["pabo", "nambi", "akka", "shenoy"]
+DOUBLE_ANNOTATED_EVERY = 4   # P2.4 wants a quarter judged twice, for agreement
+
 RELATION_TYPES = [
     "TRIGGERS", "MOTIVATES", "MOBILIZES", "ENABLES",
     "ESCALATES", "PROMPTS_RESPONSE", "CONTRIBUTES_TO",
@@ -177,9 +180,55 @@ async def seed(args) -> dict:
                                     "strength": entry["strength"],
                                     "grade_rule": rule, "lag_days": t_day - feat["c_day"]}))
                     made["channels"] += 1
+        made["assignment"] = await assign(pool, ANNOTATORS)
     finally:
         await pool.close()
     return made
+
+
+async def assign(pool, annotators: list[str]) -> dict:
+    """Deal unassigned claims round-robin, and give every fourth one a second
+    reader so inter-annotator agreement has something to measure.
+
+    Deterministic on claim_id, so re-running deals the same hands rather than
+    reshuffling work people have already started.
+    """
+    await pool.execute(
+        """
+        WITH ranked AS (
+            SELECT claim_id, row_number() OVER (ORDER BY claim_id) - 1 AS n
+            FROM claims
+            WHERE primary_annotator IS NULL
+        )
+        UPDATE claims c
+        SET primary_annotator = ($1::text[])[(r.n % array_length($1::text[], 1)) + 1],
+            -- Selecting on r.n % 4 would be perfectly correlated with the
+            -- rotation above and every double-check would land on one person's
+            -- pile. Select whole blocks instead: one block in four is 25% of
+            -- claims, and each block already contains one claim per annotator.
+            review_annotator = CASE
+                WHEN (r.n / array_length($1::text[], 1)) % $2 = 0
+                THEN ($1::text[])[((r.n + 1) % array_length($1::text[], 1)) + 1]
+                ELSE NULL END
+        FROM ranked r
+        WHERE c.claim_id = r.claim_id
+        """,
+        annotators, DOUBLE_ANNOTATED_EVERY)
+    got = await pool.fetch(
+        """
+        SELECT who,
+               count(*) FILTER (WHERE role = 'primary') AS primary_load,
+               count(*) FILTER (WHERE role = 'review')  AS review_load
+        FROM (
+            SELECT primary_annotator AS who, 'primary' AS role FROM claims
+            WHERE primary_annotator IS NOT NULL
+            UNION ALL
+            SELECT review_annotator, 'review' FROM claims
+            WHERE review_annotator IS NOT NULL
+        ) t GROUP BY who ORDER BY who
+        """)
+    return {r["who"]: {"primary": r["primary_load"], "second_reader": r["review_load"]}
+            for r in got}
 
 
 # ── serving ──────────────────────────────────────────────────────────────────
@@ -202,33 +251,51 @@ def build_app(pool_holder: dict, lifespan=None) -> FastAPI:
 
     @api.get("/api/meta")
     async def meta():
-        return {"reject_reasons": REJECT_REASONS, "relation_types": RELATION_TYPES}
+        return {"reject_reasons": REJECT_REASONS, "relation_types": RELATION_TYPES,
+                "annotators": ANNOTATORS}
 
     @api.get("/api/progress")
-    async def progress():
-        row = await pool_holder["pool"].fetchrow("""
-            SELECT count(*) AS total,
-                   count(DISTINCT effect_id) FILTER (WHERE verdict = 'unreviewed') AS targets_left,
-                   count(*) FILTER (WHERE verdict = 'unreviewed') AS unreviewed,
-                   count(*) FILTER (WHERE verdict = 'accepted') AS accepted,
-                   count(*) FILTER (WHERE verdict = 'rejected') AS rejected
-            FROM claims
+    async def progress(annotator: str = ""):
+        pool = pool_holder["pool"]
+        mine = await pool.fetchrow("""
+            SELECT count(*) AS assigned,
+                   count(*) FILTER (WHERE judged) AS judged,
+                   count(DISTINCT effect_id) FILTER (WHERE NOT judged) AS targets_left
+            FROM (
+                SELECT c.claim_id, c.effect_id,
+                       EXISTS (SELECT 1 FROM annotations a
+                               WHERE a.claim_id = c.claim_id AND a.annotator = $1) AS judged
+                FROM claims c
+                WHERE $1 = ANY (ARRAY[c.primary_annotator, c.review_annotator])
+            ) t
+        """, annotator)
+        team = await pool.fetch("""
+            SELECT annotator, count(*) AS judged FROM annotations GROUP BY 1 ORDER BY 1
         """)
-        return dict(row)
+        return {"annotator": annotator, **dict(mine),
+                "team": {r["annotator"]: r["judged"] for r in team}}
 
     @api.get("/api/claims/next")
-    async def next_claim():
+    async def next_claim(annotator: str = ""):
+        if annotator not in ANNOTATORS:
+            raise HTTPException(400, f"pick one of {', '.join(ANNOTATORS)}")
         # Every candidate is stored, including the ones the scorer would drop —
         # they are the hard negatives. But judging all 80-odd per target would
         # exhaust one event before touching the next, so serve each target's
         # strongest unjudged candidate and take the best of those. Coverage
         # spreads across targets instead of down one.
         row = await pool_holder["pool"].fetchrow("""
-            WITH best AS (
-                SELECT DISTINCT ON (c.effect_id) c.claim_id, c.machine_strength
+            WITH mine AS (
+                SELECT c.*
                 FROM claims c
-                WHERE c.verdict = 'unreviewed'
-                ORDER BY c.effect_id, c.machine_strength DESC NULLS LAST, c.claim_id
+                WHERE ($1 = ANY (ARRAY[c.primary_annotator, c.review_annotator]))
+                  AND NOT EXISTS (
+                      SELECT 1 FROM annotations a
+                      WHERE a.claim_id = c.claim_id AND a.annotator = $1)
+            ), best AS (
+                SELECT DISTINCT ON (m.effect_id) m.claim_id, m.machine_strength
+                FROM mine m
+                ORDER BY m.effect_id, m.machine_strength DESC NULLS LAST, m.claim_id
             )
             SELECT c.claim_id, c.machine_strength, c.grade,
                    cause.description AS cause_actors, cause.event_type AS cause_type,
@@ -241,7 +308,7 @@ def build_app(pool_holder: dict, lifespan=None) -> FastAPI:
             JOIN events eff   ON eff.event_id   = c.effect_id
             ORDER BY b.machine_strength DESC NULLS LAST, c.claim_id
             LIMIT 1
-        """)
+        """, annotator)
         if row is None:
             return JSONResponse({"done": True})
         channels = await pool_holder["pool"].fetch(
@@ -331,6 +398,9 @@ def main() -> None:
     s.add_argument("--root-code", default="14")
     s.add_argument("--targets", type=int, default=40)
 
+    a = sub.add_parser("assign", help="deal unassigned claims across the four annotators")
+    a.add_argument("--database-url", default=DEFAULT_DATABASE_URL)
+
     v = sub.add_parser("serve", help="run the annotation UI")
     v.add_argument("--database-url", default=DEFAULT_DATABASE_URL)
     v.add_argument("--host", default="127.0.0.1")
@@ -340,6 +410,14 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "seed":
         print(json.dumps(asyncio.run(seed(args)), indent=2))
+    elif args.command == "assign":
+        async def go():
+            pool = await asyncpg.create_pool(args.database_url, min_size=1, max_size=2)
+            try:
+                return await assign(pool, ANNOTATORS)
+            finally:
+                await pool.close()
+        print(json.dumps(asyncio.run(go()), indent=2))
     else:
         print(f"annotating at http://{args.host}:{args.port}")
         serve(args)

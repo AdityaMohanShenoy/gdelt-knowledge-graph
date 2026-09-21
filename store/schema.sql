@@ -116,6 +116,11 @@ CREATE TABLE IF NOT EXISTS claims (
     -- Rejected candidates stay. They are the hard negatives a trained ranker
     -- needs; accepts plus random negatives teach nothing.
     verdict         TEXT CHECK (verdict IN ('accepted', 'rejected', 'unreviewed')),
+    -- P2.4: one primary annotator per pair, a quarter of them double-annotated
+    -- so inter-annotator agreement can be measured. Both judgements land in
+    -- `annotations`; verdict carries the primary's.
+    primary_annotator TEXT,
+    review_annotator  TEXT,
     build_id        BIGINT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (cause_kind, cause_id, effect_kind, effect_id, build_id)
@@ -171,6 +176,10 @@ CREATE INDEX IF NOT EXISTS mentions_event_idx ON mentions (event_id);
 CREATE INDEX IF NOT EXISTS claims_effect_idx ON claims (effect_kind, effect_id);
 CREATE INDEX IF NOT EXISTS claims_cause_idx ON claims (cause_kind, cause_id);
 CREATE INDEX IF NOT EXISTS claims_verdict_idx ON claims (verdict);
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS primary_annotator TEXT;
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS review_annotator TEXT;
+CREATE INDEX IF NOT EXISTS claims_primary_idx ON claims (primary_annotator, verdict);
+CREATE INDEX IF NOT EXISTS claims_review_idx ON claims (review_annotator);
 CREATE INDEX IF NOT EXISTS annotations_claim_idx ON annotations (claim_id);
 
 -- Append-only evidence. Enforced, not merely documented: a correction is a new

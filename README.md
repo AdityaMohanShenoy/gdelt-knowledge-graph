@@ -107,6 +107,10 @@ python pipeline/14_run_annotator.py serve --port 8200
 open "http://127.0.0.1:8200/?annotator=your-name"
 ```
 
+Open it and pick your name — pabo, nambi, akka or shenoy. Each queue is that
+person's own. A quarter of claims are dealt to a second reader as well, so
+inter-annotator agreement can be measured; re-run `assign` after seeding more.
+
 Keys: `a` accept, `e` change strength, `r` reject, `1`-`8` pick a rejection
 reason, `m` reveal what the scorer thought. The machine's own score is hidden by
 default on purpose — P3.4 measures calibration by comparing it against the human
