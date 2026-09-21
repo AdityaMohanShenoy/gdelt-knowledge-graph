@@ -16,15 +16,30 @@ CREATE TABLE IF NOT EXISTS sources (
     -- This is the settled evidence record, and holds the text by reference.
     article_document_id  BIGINT REFERENCES article_documents (document_id),
     url                  TEXT NOT NULL,
-    url_key              TEXT NOT NULL UNIQUE,
-    -- NULL until the extractor stops discarding trafilatura's date metadata.
-    published_at         TIMESTAMPTZ,
+    -- Deliberately NOT unique. The table is append-only, and the plan's
+    -- correction model is a new row superseding the old one; a unique key would
+    -- make correction impossible by either route. The highest source_id for a
+    -- url_key is the current record — see the current_sources view.
+    url_key              TEXT NOT NULL,
+    -- A DATE, not a timestamp: trafilatura reports a day, and a TIMESTAMPTZ
+    -- would imply a precision and a timezone we do not have. Validated against
+    -- the GDELT event day by 13_load_sources, not trusted as extracted.
+    published_at         DATE,
     fetched_at           TIMESTAMPTZ,
     content_hash         TEXT,
     raw_html_path        TEXT,
     fetch_status         TEXT NOT NULL,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS sources_url_key_idx ON sources (url_key, source_id DESC);
+
+-- The current record per URL. History stays queryable in sources itself, which
+-- is what makes a rebuild a recompile rather than a migration.
+CREATE OR REPLACE VIEW current_sources AS
+SELECT DISTINCT ON (url_key) *
+FROM sources
+ORDER BY url_key, source_id DESC;
 
 CREATE TABLE IF NOT EXISTS entities (
     entity_id       BIGSERIAL PRIMARY KEY,
