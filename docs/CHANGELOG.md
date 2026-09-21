@@ -1,5 +1,52 @@
 # Changelog
 
+## 2026-09-21 — P1.1: the evidence store
+
+`store/schema.sql` and `store/db.py`. `python -m store.db --init` applies it
+idempotently; `--check` reports row counts per table.
+
+Nine tables per the plan: `sources`, `entities`, `events`, `mentions`,
+`conditions`, `claims`, `claim_channels`, `annotations`, `build_versions`.
+
+Two deliberate departures from the plan's letter:
+
+**Postgres, not SQLite.** The plan says "SQLite locally". But Postgres is already
+running with the 640k-row article corpus; P2.4 wants four annotators working
+concurrently, which is the plan's own stated trigger for choosing Supabase over
+SQLite; and SQLite would put the evidence store in a different database from the
+articles it references — no foreign keys across them, and two backup stories.
+The open decision in the plan is therefore settled by what is already deployed.
+The DDL stays portable.
+
+**`sources` is its own table, not a view over `article_documents`.**
+`article_documents` is a mutable work queue with statuses, leases and retries.
+The evidence store wants the settled record, and the plan requires `sources` to
+be append-only, which a view over a mutable queue cannot be. `sources` holds the
+metadata and references the article row for its text.
+
+Append-only is enforced by trigger on `sources`, `mentions` and `annotations`,
+not left as a convention. A correction is a new row that supersedes, so what was
+believed when survives — that is what makes P5.2 a recompile rather than a
+migration. `claims.verdict` stays mutable, since review changes it.
+
+Constraints that encode plan requirements rather than merely documenting them:
+rejections carry a reason from P2.3's fixed taxonomy (enforced by CHECK);
+`annotations` keeps both `machine_strength` and `human_strength`, since P3.4
+measures calibration by comparing them; `claim_channels.available` is a boolean
+distinct from a zero score, because absent evidence and evidence of absence are
+different inputs to the fusion; rejected claims are retained as the hard
+negatives a trained ranker needs.
+
+`sources.published_at` is nullable and currently unpopulated. trafilatura
+already returns `date`, `language` and `author` on every extraction and the
+extractor discards all of it, keeping only title and text. Recovering it needs
+no refetching — the 4.6GB of stored HTML can be reprocessed — but it is P1.3
+work, not P1.1.
+
+6 tests: idempotent init, a row round-tripping every table through its real
+foreign keys, append-only enforcement on update and delete, mutability of
+`claims`, retention of rejected claims, and refusal of a reason-less rejection.
+
 ## 2026-09-18 — Separate the two pipeline lineages
 
 `pipeline/` held two unrelated pipelines sharing one number space, with `01`
