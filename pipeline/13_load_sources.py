@@ -24,8 +24,10 @@ import asyncpg
 import duckdb
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "pipeline"))
 
+from store.db import search_path_setup  # noqa: E402
 from url_utils import normalize_url  # noqa: E402
 
 DEFAULT_EVENTS = ROOT / "data" / "working" / "india-2024" / "events.parquet"
@@ -162,7 +164,9 @@ async def main_async(args) -> None:
     print(f"mapping event days from {args.events.relative_to(ROOT)} ...")
     days = event_day_by_url_key(args.events)
     print(f"  {len(days):,} url keys carry a GDELT day")
-    pool = await asyncpg.create_pool(args.database_url, min_size=1, max_size=4)
+    pool = await asyncpg.create_pool(
+        args.database_url, min_size=1, max_size=4,
+        setup=search_path_setup(args.schema), statement_cache_size=0)
     try:
         counts = await load(pool, days, args.tolerance_days, args.limit)
         total = await pool.fetchval("SELECT count(*) FROM sources")
@@ -178,6 +182,7 @@ def main() -> None:
     parser.add_argument("--database-url", default=DEFAULT_DATABASE_URL)
     parser.add_argument("--tolerance-days", type=int, default=DEFAULT_TOLERANCE_DAYS)
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--schema", default="public")
     args = parser.parse_args()
     asyncio.run(main_async(args))
 

@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import scoring  # noqa: E402
+from store.db import search_path_setup  # noqa: E402
 from scoring.sql import num, rows, safe  # noqa: E402
 
 FRONTEND = ROOT / "frontend" / "annotate.html"
@@ -51,6 +52,7 @@ ANNOTATORS = ["pabo", "nambi", "akka", "shenoy"]
 # this on a public URL: `annotations` refuses DELETE, so anything a stranger
 # writes is permanent in the set P3.4's calibration rests on.
 ANNOTATOR_TOKEN = os.environ.get("ANNOTATOR_TOKEN", "")
+DEFAULT_SCHEMA = os.environ.get("EVIDENCE_SCHEMA", "public")
 DOUBLE_ANNOTATED_EVERY = 4   # P2.4 wants a quarter judged twice, for agreement
 
 RELATION_TYPES = [
@@ -101,7 +103,9 @@ async def seed(args) -> dict:
         ORDER BY ABS(GoldsteinScale) DESC, day LIMIT {int(args.targets)}
     """))
 
-    pool = await asyncpg.create_pool(args.database_url, min_size=1, max_size=4)
+    pool = await asyncpg.create_pool(
+        args.database_url, min_size=1, max_size=4,
+        setup=search_path_setup(args.schema), statement_cache_size=0)
     made = {"targets": 0, "claims": 0, "channels": 0}
     try:
         build_id = await pool.fetchval(
@@ -397,7 +401,12 @@ def serve(args) -> None:
 
     @asynccontextmanager
     async def lifespan(_app):
-        holder["pool"] = await asyncpg.create_pool(args.database_url, min_size=1, max_size=4)
+        holder["pool"] = await asyncpg.create_pool(
+            args.database_url, min_size=1, max_size=4,
+            setup=search_path_setup(args.schema),
+            # Supabase's transaction pooler cannot carry prepared statements,
+            # which asyncpg caches by default.
+            statement_cache_size=0)
         try:
             yield
         finally:
@@ -417,22 +426,27 @@ def main() -> None:
     s.add_argument("--country", default="IN")
     s.add_argument("--root-code", default="14")
     s.add_argument("--targets", type=int, default=40)
+    s.add_argument("--schema", default=DEFAULT_SCHEMA)
 
     a = sub.add_parser("assign", help="deal unassigned claims across the four annotators")
     a.add_argument("--database-url", default=DEFAULT_DATABASE_URL)
+    a.add_argument("--schema", default=DEFAULT_SCHEMA)
 
     v = sub.add_parser("serve", help="run the annotation UI")
     v.add_argument("--database-url", default=DEFAULT_DATABASE_URL)
     v.add_argument("--host", default="127.0.0.1")
     v.add_argument("--port", type=int, default=8200)
     v.add_argument("--annotator", default="anonymous")
+    v.add_argument("--schema", default=DEFAULT_SCHEMA)
 
     args = parser.parse_args()
     if args.command == "seed":
         print(json.dumps(asyncio.run(seed(args)), indent=2))
     elif args.command == "assign":
         async def go():
-            pool = await asyncpg.create_pool(args.database_url, min_size=1, max_size=2)
+            pool = await asyncpg.create_pool(
+                args.database_url, min_size=1, max_size=2,
+                setup=search_path_setup(args.schema), statement_cache_size=0)
             try:
                 return await assign(pool, ANNOTATORS)
             finally:

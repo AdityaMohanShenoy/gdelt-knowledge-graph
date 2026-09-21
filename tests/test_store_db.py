@@ -27,8 +27,7 @@ async def _in_throwaway_schema(body):
 
     connection = await asyncpg.connect(DATABASE_URL, timeout=2)
     try:
-        await connection.execute(f'SET search_path TO "{name}", public')
-        return await body(connection)
+        return await body(connection, name)
     finally:
         await connection.execute(f'DROP SCHEMA "{name}" CASCADE')
         await connection.close()
@@ -79,9 +78,9 @@ async def _seed(connection):
 
 
 def test_init_is_idempotent_and_every_table_round_trips():
-    async def body(connection):
-        await db.init(connection)
-        await db.init(connection)          # the acceptance criterion: twice is safe
+    async def body(connection, schema):
+        await db.init(connection, schema)
+        await db.init(connection, schema)          # the acceptance criterion: twice is safe
         ids = await _seed(connection)
         counts = await db.describe(connection)
         return ids, counts
@@ -94,8 +93,8 @@ def test_init_is_idempotent_and_every_table_round_trips():
 
 
 def test_evidence_tables_reject_update_and_delete():
-    async def body(connection):
-        await db.init(connection)
+    async def body(connection, schema):
+        await db.init(connection, schema)
         await _seed(connection)
         refused = {}
         for table in db.APPEND_ONLY:
@@ -115,8 +114,8 @@ def test_evidence_tables_reject_update_and_delete():
 
 
 def test_mutable_tables_still_accept_updates():
-    async def body(connection):
-        await db.init(connection)
+    async def body(connection, schema):
+        await db.init(connection, schema)
         ids = await _seed(connection)
         # claims carry a verdict that changes as review proceeds; only the
         # evidence tables are frozen.
@@ -129,8 +128,8 @@ def test_mutable_tables_still_accept_updates():
 
 
 def test_rejected_claims_are_retained_as_hard_negatives():
-    async def body(connection):
-        await db.init(connection)
+    async def body(connection, schema):
+        await db.init(connection, schema)
         ids = await _seed(connection)
         await connection.execute(
             "UPDATE claims SET verdict = 'rejected' WHERE claim_id = $1", ids["claim_id"])
@@ -144,8 +143,8 @@ def test_rejected_claims_are_retained_as_hard_negatives():
 
 
 def test_reject_without_a_reason_is_refused():
-    async def body(connection):
-        await db.init(connection)
+    async def body(connection, schema):
+        await db.init(connection, schema)
         ids = await _seed(connection)
         try:
             await connection.execute(
