@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-09-21 — P3.1: scoring out of app.py
+
+`app.py` goes from **1,116 to 796 lines**. The Causal Evidence scoring now lives
+in `scoring/`: `config.py`, `sql.py`, `retrieval.py`, `channels/`, `fuse.py`,
+`grade.py`.
+
+A pure move, and the acceptance criterion is behavioural rather than structural.
+A golden capture of 46 responses — `/api/causal/seeds`, `/api/causal/matrix` and
+`/api/causal/score` across three countries and twelve seeds each, plus empty,
+missing, malformed and bad-country inputs — hashes identically before and after:
+`sha256 a07087a522f6d601`. `test_app.py` passes unchanged.
+
+`num`, `safe` and `rows` moved to `scoring/sql.py` so the package never imports
+the app. `app.py` re-exports `_token_idf`, `_pick_probes`, `ACTOR_PROBES` and
+`ACTOR_MAX_SHARE`, which `test_app.py` reaches for directly; keeping one import
+surface was preferable to editing the deploy gate during a refactor that is
+supposed to change nothing.
+
+`scoring/channels/` holds the six channels as `score()` and `explain()`. P3.2
+and P3.3 add `textual.py` and `contradiction.py` beside them, which is why the
+package shape the plan specified is worth having before the channels get real.
+
+8 new tests lock the CLAUDE.md invariants where they now live: an unavailable
+channel is not a zero, probe tokens are rare and their ties break
+deterministically, stop actors carry no signal, contradiction is the only
+negative weight, the logistic saturates without overflowing, and the grade
+ladder follows its documented rules.
+
 ## 2026-09-21 — The extractor keeps the publication date
 
 trafilatura returned `date`, `language` and `author` on every extraction and the

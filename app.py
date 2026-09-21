@@ -13,6 +13,9 @@ import os
 import duckdb
 import math
 
+import scoring
+from scoring.sql import num, rows, safe
+
 app = FastAPI(title="GDELT Intel API", version="1.0")
 
 app.add_middleware(
@@ -76,30 +79,16 @@ def get_con() -> duckdb.DuckDBPyConnection:
         _con.execute(f"CREATE VIEW events AS SELECT * FROM read_parquet('{path}')")
     return _con
 
-def num(v, default=0.0) -> float:
-    """AVG() over zero rows is SQL NULL, which reaches us as None from
-    fetchone() tuples and as NaN from _rows() dicts. Guard both."""
-    return default if v is None or v != v else float(v)
+# num/safe/_rows live in scoring.sql so the package does not import the app.
+_rows = rows
 
-
-def safe(s: str) -> str:
-    return s.replace("'", "''")
-
-# DuckDB rows as dicts. SQL NULL -> NaN in numeric columns so the `x == x`
-# guards below keep behaving exactly as they did with pandas DataFrames.
-_NUMERIC = {"TINYINT","SMALLINT","INTEGER","BIGINT","HUGEINT","UTINYINT","USMALLINT",
-            "UINTEGER","UBIGINT","FLOAT","DOUBLE","DECIMAL","REAL"}
-
-def _rows(cur) -> list[dict]:
-    cols = [d[0] for d in cur.description]
-    numeric = {i for i, d in enumerate(cur.description)
-               if str(d[1]).split("(")[0] in _NUMERIC}
-    nan = float("nan")
-    return [
-        {c: (nan if (i in numeric and v is None) else v)
-         for i, (c, v) in enumerate(zip(cols, row))}
-        for row in cur.fetchall()
-    ]
+# app.py owned these until P3.1 moved them into scoring/. Re-exported so one
+# import surface keeps working — test_app.py is the deploy gate and the plan
+# requires it to pass unchanged.
+_token_idf = scoring.token_idf
+_pick_probes = scoring.pick_probes
+ACTOR_PROBES = scoring.ACTOR_PROBES
+ACTOR_MAX_SHARE = scoring.ACTOR_MAX_SHARE
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def _country_filter(country: str, col: str = "ActionGeo_CountryCode") -> str:
@@ -531,197 +520,11 @@ async def heatmap():
 # Scores candidate causes for one event across the evidence channels that are
 # computable from the shipped parquet. Channels needing article text (direct
 # quotation, denial) have no corpus here and report as unavailable rather than
-# being silently scored zero -- see CHANNEL_META below.
+# being silently scored zero -- see scoring.CHANNEL_META below.
 #
-# "Present" for a root code on a day means an unusually active day for that
-# code: daily count above its own 75th percentile. Raw presence is useless at
-# day granularity because common codes fire nearly every day in a busy country.
-
-CAUSAL_WINDOW_DAYS = 7
-CAUSAL_FLOOR = 0.08
-MIN_GROUP_EVENTS = 3          # a (day, type) group below this is too thin to score
-ACTOR_MAX_SHARE = 0.05        # a token in >5% of events cannot discriminate
-ACTOR_PROBES = 3              # how many of the rarest tokens to match on          # below this a candidate is scored but not drawn
-
-# Illustrative weights. In the real design these are fitted on the Stage 1
-# labelled decisions; there is no labelled set in this repo, so they are fixed
-# and the UI says so.
-CAUSAL_W = {
-    "documented":    2.6,
-    "corroboration": 1.4,
-    "prior":         1.1,
-    "contrastive":   1.3,
-    "actors":        0.9,
-    "contradiction": -3.0,
-}
-CAUSAL_INTERCEPT = -3.2
-
-CHANNEL_META = [
-    {"key": "documented",    "label": "Reporter stated it",  "available": True,
-     "note": "Proxied by the pipeline's own precursor links"},
-    {"key": "corroboration", "label": "Independent outlets",  "available": True,
-     "note": "Distinct source domains reporting the group"},
-    {"key": "prior",         "label": "Usual pattern",        "available": True,
-     "note": "Lift of effect type after cause type"},
-    {"key": "contrastive",   "label": "What happened else",   "available": True,
-     "note": "Sufficiency and necessity over spike days"},
-    {"key": "actors",        "label": "Same people",          "available": True,
-     "note": "Shared actor tokens, rare tokens weighted"},
-    {"key": "contradiction", "label": "Anyone denied it",     "available": False,
-     "note": "Needs article text -- no corpus in this build"},
-]
-
-ROOT_LABEL = {
-    "01": "Public Statement", "02": "Appeal", "03": "Intent to Cooperate",
-    "04": "Consult", "05": "Diplomatic Cooperation", "06": "Material Cooperation",
-    "07": "Provide Aid", "08": "Yield", "09": "Investigate", "10": "Demand",
-    "11": "Disapprove", "12": "Reject", "13": "Threaten", "14": "Protest",
-    "15": "Military Posture", "16": "Reduce Relations", "17": "Coerce",
-    "18": "Assault", "19": "Fight", "20": "Mass Violence",
-}
-
-# Actor tokens so common they carry no information about a specific link.
-_STOP_ACTORS = {
-    "THE", "AND", "FOR", "OF", "A", "AN", "IN", "ON", "TO",
-    "GOVERNMENT", "PRESIDENT", "MINISTER", "OFFICIAL", "OFFICIALS",
-    "AUTHORITY", "AUTHORITIES", "POLICE", "MILITARY", "COUNTRY", "STATE",
-}
-
-
-def _strength(v: float, available: bool = True) -> str:
-    """Turn a 0-1 score into a word. A reader should not have to know whether
-    0.43 is good."""
-    if not available:
-        return "unavailable"
-    if v >= 0.70:
-        return "strong"
-    if v >= 0.40:
-        return "moderate"
-    if v >= 0.15:
-        return "weak"
-    if v > 0:
-        return "very weak"
-    return "none"
-
-
-def _logistic(z: float) -> float:
-    if z < -60:
-        return 0.0
-    if z > 60:
-        return 1.0
-    return 1.0 / (1.0 + math.exp(-z))
-
-
 def _cc_or_default(country: str) -> str:
     cc = (country or "IN").strip().upper()
     return cc if cc in TOP10 else "IN"
-
-
-def _causal_matrix_rows(con, cc: str) -> list[dict]:
-    """Type-pair statistics for one country, computed on spike days."""
-    return _rows(con.execute(f"""
-        WITH agg AS (
-            SELECT COALESCE(NULLIF(EventRootCode, ''), '00') AS rc,
-                   day AS dnum, COUNT(*) AS n
-            FROM events
-            WHERE ActionGeo_CountryCode = '{safe(cc)}'
-            GROUP BY rc, dnum
-        ),
-        thr AS (
-            SELECT rc, quantile_cont(n, 0.75) AS t, COUNT(*) AS obs_days
-            FROM agg GROUP BY rc
-        ),
-        pres AS (
-            SELECT a.rc AS rc,
-                   strptime(CAST(a.dnum AS VARCHAR), '%Y%m%d')::DATE AS d
-            FROM agg a JOIN thr ON thr.rc = a.rc
-            WHERE a.n > thr.t
-        ),
-        span AS (SELECT COUNT(DISTINCT d) AS total_days FROM pres),
-        tot AS (SELECT rc, COUNT(DISTINCT d) AS spike_days FROM pres GROUP BY rc),
-        joined AS (
-            SELECT c.rc AS crc, e.rc AS erc, c.d AS cd, e.d AS ed
-            FROM pres c JOIN pres e
-              ON e.d > c.d AND e.d <= c.d + INTERVAL {CAUSAL_WINDOW_DAYS} DAY
-        ),
-        pair AS (
-            SELECT crc, erc,
-                   COUNT(DISTINCT cd) AS cause_hits,
-                   COUNT(DISTINCT ed) AS effect_hits
-            FROM joined GROUP BY crc, erc
-        )
-        SELECT p.crc, p.erc, p.cause_hits, p.effect_hits,
-               ct.spike_days AS cause_days, et.spike_days AS effect_days,
-               s.total_days
-        FROM pair p
-        JOIN tot ct ON ct.rc = p.crc
-        JOIN tot et ON et.rc = p.erc
-        CROSS JOIN span s
-        ORDER BY p.crc, p.erc
-    """))
-
-
-def _matrix_index(rows: list[dict]) -> dict:
-    """(cause_rc, effect_rc) -> {sufficiency, necessity, lift}"""
-    idx = {}
-    for r in rows:
-        cause_days  = max(int(num(r["cause_days"])), 1)
-        effect_days = max(int(num(r["effect_days"])), 1)
-        total_days  = max(int(num(r["total_days"])), 1)
-        suff = int(num(r["cause_hits"]))  / cause_days
-        nec  = int(num(r["effect_hits"])) / effect_days
-        base = effect_days / total_days
-        idx[(str(r["crc"]), str(r["erc"]))] = {
-            "sufficiency": round(suff, 4),
-            "necessity":   round(nec, 4),
-            "lift":        round(suff / base, 4) if base > 0 else 0.0,
-            "cause_days":  cause_days,
-            "effect_days": effect_days,
-        }
-    return idx
-
-
-def _actor_tokens(*names) -> set:
-    out = set()
-    for n in names:
-        if not n:
-            continue
-        for raw in str(n).replace(",", " ").split():
-            tok = "".join(ch for ch in raw.upper() if ch.isalnum())
-            if len(tok) > 2 and tok not in _STOP_ACTORS:
-                out.add(tok)
-    return out
-
-
-def _token_idf(con, tokens: list[str]) -> dict:
-    """Document frequency and inverse document frequency per token, one scan.
-
-    Token length is a terrible proxy for how much a name narrows things down:
-    UNITED appears in 10.9% of events and POLICE in 0.9%, but UNITED is the
-    longer string. Counting is cheap, so count.
-    """
-    if not tokens:
-        return {}
-    sel = ", ".join(
-        f"COUNT(*) FILTER (WHERE Actor1Name ILIKE '%{safe(t)}%'"
-        f" OR Actor2Name ILIKE '%{safe(t)}%') AS t{i}"
-        for i, t in enumerate(tokens))
-    row = con.execute(f"SELECT COUNT(*) AS total, {sel} FROM events").fetchone()
-    total = max(int(num(row[0])), 1)
-    out = {}
-    for i, t in enumerate(tokens):
-        df = int(num(row[i + 1]))
-        out[t] = {"df": df, "share": df / total, "idf": math.log(total / (1 + df))}
-    return out
-
-
-def _pick_probes(idf: dict) -> list[str]:
-    """Rarest usable tokens. Sorted with a tiebreaker so the pick is stable."""
-    usable = [t for t, v in idf.items()
-              # df == 0 would score maximum idf while being unable to match
-              # anything at all, so it is useless rather than informative.
-              if v["df"] > 0 and v["share"] <= ACTOR_MAX_SHARE]
-    return sorted(usable, key=lambda t: (-idf[t]["idf"], t))[:ACTOR_PROBES]
 
 
 @app.get("/api/causal/seeds")
@@ -750,7 +553,7 @@ async def causal_seeds(country: str = "IN", limit: int = 12):
             "id":        str(int(num(r["GlobalEventID"]))),
             "date":      str(int(num(r["day"]))),
             "root_code": rc,
-            "root_label": ROOT_LABEL.get(rc, rc),
+            "root_label": scoring.ROOT_LABEL.get(rc, rc),
             "quad":      str(r["QuadClass"]) if r["QuadClass"] else "",
             "goldstein": round(num(r["GoldsteinScale"]), 2),
             "actor1":    str(r["Actor1Name"]) if r["Actor1Name"] else "",
@@ -766,7 +569,7 @@ async def causal_matrix(country: str = "IN"):
     """Type-level prior: which event types precede which, for one country."""
     con = get_con()
     cc = _cc_or_default(country)
-    rows = _causal_matrix_rows(con, cc)
+    rows = scoring.matrix_rows(con, cc)
 
     pairs = []
     for r in rows:
@@ -778,8 +581,8 @@ async def causal_matrix(country: str = "IN"):
         nec  = int(num(r["effect_hits"])) / effect_days
         base = effect_days / total_days
         pairs.append({
-            "cause": crc, "cause_label": ROOT_LABEL.get(crc, crc),
-            "effect": erc, "effect_label": ROOT_LABEL.get(erc, erc),
+            "cause": crc, "cause_label": scoring.ROOT_LABEL.get(crc, crc),
+            "effect": erc, "effect_label": scoring.ROOT_LABEL.get(erc, erc),
             "sufficiency": round(suff, 3),
             "necessity":   round(nec, 3),
             "lift":        round(suff / base, 3) if base > 0 else 0.0,
@@ -791,7 +594,7 @@ async def causal_matrix(country: str = "IN"):
     pairs.sort(key=lambda p: (-p["lift"], p["cause"], p["effect"]))
     return {
         "country": cc, "name": FIPS_NAME.get(cc, cc), "flag": FIPS_FLAG.get(cc, "🌍"),
-        "window_days": CAUSAL_WINDOW_DAYS,
+        "window_days": scoring.CAUSAL_WINDOW_DAYS,
         "pairs": pairs[:40],
     }
 
@@ -804,7 +607,7 @@ async def causal_score(event_id: str = "", country: str = "IN"):
 
     eid = "".join(ch for ch in str(event_id) if ch.isdigit())
     if not eid:
-        return {"error": "no_event", "channels": CHANNEL_META, "target": None,
+        return {"error": "no_event", "channels": scoring.CHANNEL_META, "target": None,
                 "candidates": [], "coverage": 0.0}
 
     tgt = con.execute(f"""
@@ -817,19 +620,19 @@ async def causal_score(event_id: str = "", country: str = "IN"):
     """).fetchone()
 
     if tgt is None:
-        return {"error": "not_found", "channels": CHANNEL_META, "target": None,
+        return {"error": "not_found", "channels": scoring.CHANNEL_META, "target": None,
                 "candidates": [], "coverage": 0.0}
 
     t_day  = int(num(tgt[1]))
     t_rc   = str(tgt[2]).zfill(2) if tgt[2] else "00"
     t_prec = str(tgt[8]) if tgt[8] else ""
-    t_tokens = _actor_tokens(tgt[5], tgt[6])
+    t_tokens = scoring.actor_tokens(tgt[5], tgt[6])
 
     target = {
         "id":         str(int(num(tgt[0]))),
         "date":       str(t_day),
         "root_code":  t_rc,
-        "root_label": ROOT_LABEL.get(t_rc, t_rc),
+        "root_label": scoring.ROOT_LABEL.get(t_rc, t_rc),
         "quad":       str(tgt[3]) if tgt[3] else "",
         "goldstein":  round(num(tgt[4]), 2),
         "actor1":     str(tgt[5]) if tgt[5] else "",
@@ -852,8 +655,8 @@ async def causal_score(event_id: str = "", country: str = "IN"):
 
     # Weight actor overlap by how rare each name is in the corpus, so a match
     # on "SAMYUKTA KISAN MORCHA" counts far more than one on "UNITED".
-    tok_idf = _token_idf(con, sorted(t_tokens))
-    probe = _pick_probes(tok_idf)
+    tok_idf = scoring.token_idf(con, sorted(t_tokens))
+    probe = scoring.pick_probes(tok_idf)
     idf_sum = sum(tok_idf[t]["idf"] for t in probe) or 1.0
     if probe:
         hit_cols = ", ".join(
@@ -864,7 +667,7 @@ async def causal_score(event_id: str = "", country: str = "IN"):
         hit_cols = "0 AS hit0"
 
     # Candidate groups: one per (day, root code) in the preceding window.
-    lo = t_day - CAUSAL_WINDOW_DAYS
+    lo = t_day - scoring.CAUSAL_WINDOW_DAYS
     cands = _rows(con.execute(f"""
         SELECT day,
                COALESCE(NULLIF(EventRootCode, ''), '00') AS rc,
@@ -887,143 +690,28 @@ async def causal_score(event_id: str = "", country: str = "IN"):
     """).fetchone()[0]))
 
     n_groups = len(cands)
-    cands = [r for r in cands if int(num(r["n"])) >= MIN_GROUP_EVENTS]
+    cands = [r for r in cands if int(num(r["n"])) >= scoring.MIN_GROUP_EVENTS]
 
-    midx = _matrix_index(_causal_matrix_rows(con, cc))
+    midx = scoring.matrix_index(scoring.matrix_rows(con, cc))
 
     scored = []
     for r in cands:
-        c_day = int(num(r["day"]))
-        c_rc  = str(r["rc"]).zfill(2)
-        stat  = midx.get((c_rc, t_rc), {})
-
-        # Lift of 8+ is a strong type-level signal; below ~2 is noise.
-        prior = min(max((num(stat.get("lift")) - 1.0) / 7.0, 0.0), 1.0)
-
-        # Sufficiency carries most of the weight. Necessity alone is vacuous for
-        # common types -- "every riot had a statement beforehand" is true of
-        # almost any pair, because statements fire constantly.
-        suff = max(num(stat.get("sufficiency")), 0.0)
-        nec  = max(num(stat.get("necessity")), 0.0)
-        contrastive = min(0.75 * suff + 0.25 * nec, 1.0)
-
-        # Each probe token contributes the share of the group's events naming
-        # it, weighted by that token's own rarity.
-        n_events = max(int(num(r["n"])), 1)
-        hits = {t: int(num(r.get(f"hit{i}"))) for i, t in enumerate(probe)}
-        actors = min(sum((hits[t] / n_events) * (tok_idf[t]["idf"] / idf_sum)
-                         for t in probe), 1.0) if probe else 0.0
-
-        # Log scale: 40+ distinct domains is saturation, 8 is unremarkable.
-        domains = int(num(r["domains"]))
-        corroboration = min(math.log1p(domains) / math.log1p(40), 1.0)
-
-        documented = 1.0 if (c_day, c_rc) in documented_groups else 0.0
-        contradiction = 0.0            # no article text in this build
-
-        ch = {
-            "documented":    round(documented, 3),
-            "corroboration": round(corroboration, 3),
-            "prior":         round(prior, 3),
-            "contrastive":   round(contrastive, 3),
-            "actors":        round(actors, 3),
-            "contradiction": round(contradiction, 3),
-        }
-        z = CAUSAL_INTERCEPT + sum(CAUSAL_W[k] * ch[k] for k in CAUSAL_W)
-        conf = _logistic(z)
-
-        # Every intermediate, so a reader can re-derive the number by hand
-        # instead of taking the endpoint's word for it.
-        lift = num(stat.get("lift"))
-        c_name, t_name = ROOT_LABEL.get(c_rc, c_rc), ROOT_LABEL.get(t_rc, t_rc)
-
-        if probe:
-            actor_plain = " ".join(
-                f'"{t}" appears in {tok_idf[t]["share"]*100:.1f}% of all events, so it is '
-                f'{"a distinctive" if tok_idf[t]["share"] < 0.01 else "a fairly common"} name — '
-                f'{hits[t]} of the {n_events} events here mention it.'
-                for t in probe)
-        else:
-            actor_plain = ("None of the target's actor names are distinctive enough "
-                           "to be worth matching on.")
-
-        why = [
-            {"key": "documented", "question": "Did a reporter say so?",
-             "score": round(documented, 3), "strength": _strength(documented),
-             "plain": ("Your existing pipeline already recorded this as a cause of the "
-                       "target event." if documented >= 0.5 else
-                       "The pipeline never linked anything of this type on this day to "
-                       "the target event."),
-             "math": f"precursor group ({c_day}, {c_rc}) "
-                     f"{'matched' if documented >= 0.5 else 'not matched'}"},
-
-            {"key": "corroboration", "question": "How many outlets carried it?",
-             "score": round(corroboration, 3), "strength": _strength(corroboration),
-             "plain": f"{domains} different news sites reported events in this group. "
-                      f"Around 40 sites would count as full marks.",
-             "math": f"log1p({domains}) / log1p(40)"},
-
-            {"key": "prior", "question": "Is this the usual pattern?",
-             "score": round(prior, 3), "strength": _strength(prior),
-             "plain": (f"After one busy {c_name} day, another is {lift:.1f}× more likely "
-                       f"than on an average day." if c_rc == t_rc else
-                       f"After a busy {c_name} day, a busy {t_name} day is "
-                       f"{lift:.1f}× more likely than on an average day."),
-             "math": f"lift {lift:.3f}, rescaled as (lift − 1) / 7"},
-
-            {"key": "contrastive", "question": "What happened the other times?",
-             "score": round(contrastive, 3), "strength": _strength(contrastive),
-             "plain": (f"Of all the busy {c_name} days, {suff*100:.0f}% were followed by "
-                       f"another within a week — and {nec*100:.0f}% had one before them. "
-                       f"Same event type both sides, so these two figures are the same "
-                       f"measurement." if c_rc == t_rc else
-                       f"Of all the busy {c_name} days, {suff*100:.0f}% were followed by a "
-                       f"busy {t_name} day within a week. Looking the other way, "
-                       f"{nec*100:.0f}% of busy {t_name} days had one before them."),
-             "math": f"0.75 × sufficiency {suff:.3f} + 0.25 × necessity {nec:.3f}"},
-
-            {"key": "actors", "question": "Are the same people involved?",
-             "score": round(actors, 3), "strength": _strength(actors),
-             "plain": actor_plain,
-             "math": (" · ".join(f"{t} idf {tok_idf[t]['idf']:.2f} × {hits[t]}/{n_events}"
-                                 for t in probe) if probe else "no usable tokens")},
-
-            {"key": "contradiction", "question": "Did anyone deny it?",
-             "score": 0.0, "strength": _strength(0.0, available=False),
-             "plain": "This build has no article text, so we cannot check whether anyone "
-                      "denied the link. Left unscored rather than counted as a zero.",
-             "math": "—"},
-        ]
+        ch, feat = scoring.channels.score(
+            r, target_rc=t_rc, matrix_index=midx, probe=probe,
+            token_idf=tok_idf, idf_sum=idf_sum, documented_groups=documented_groups,
+        )
+        z, conf = scoring.fuse(ch)
+        why = scoring.channels.explain(
+            feat, target_rc=t_rc, probe=probe, token_idf=tok_idf,
+        )
+        c_day, c_rc = feat["c_day"], feat["c_rc"]
+        stat, suff, domains, hits = feat["stat"], feat["suff"], feat["domains"], feat["hits"]
+        grade, rule = scoring.grade(
+            feat["documented"], feat["corroboration"], feat["prior"],
+            feat["contrastive"], feat["actors"], suff, conf, domains,
+        )
         qmap = {w["key"]: w["question"] for w in why}
-        terms = [{"key": k, "question": qmap[k], "score": ch[k], "weight": CAUSAL_W[k],
-                  "contribution": round(CAUSAL_W[k] * ch[k], 3)} for k in CAUSAL_W]
-
-        pattern_strength = (prior + contrastive + actors) / 3.0
-        if documented >= 0.5 and corroboration >= 0.5:
-            grade = "confirmed"
-            rule = (f"The pipeline recorded this link and {domains} separate outlets "
-                    f"carried it. Both bars cleared, so this is as strong as the "
-                    f"evidence here gets.")
-        elif documented >= 0.5:
-            grade = "reported"
-            rule = (f"The pipeline recorded this link, but only {domains} outlets carried "
-                    f"it. Confirmed needs broader coverage — around 9 outlets at this "
-                    f"scale — so it stops one step short.")
-        elif pattern_strength >= 0.45 and suff >= 0.30:
-            grade = "pattern"
-            rule = (f"Nobody recorded this link, but the data behind it is consistent: "
-                    f"{suff*100:.0f}% of the time this cause showed up, the effect "
-                    f"followed. Strong enough to keep, as a pattern rather than a "
-                    f"documented fact.")
-        elif conf >= CAUSAL_FLOOR:
-            grade = "weak"
-            rule = ("Nobody recorded this link, and no single check is strong enough to "
-                    "carry it on its own. Kept on the list, but nothing here would "
-                    "survive a challenge.")
-        else:
-            grade = "dropped"
-            rule = ("Every check came back near zero. Not shown as a cause, but kept "
-                    "with its scores as a training example.")
+        terms = scoring.terms(ch, qmap)
 
         scored.append({
             "group_id":    f"{c_day}-{c_rc}",
@@ -1032,7 +720,7 @@ async def causal_score(event_id: str = "", country: str = "IN"):
             "date":        str(c_day),
             "lag_days":    max(t_day - c_day, 0),
             "root_code":   c_rc,
-            "root_label":  ROOT_LABEL.get(c_rc, c_rc),
+            "root_label":  scoring.ROOT_LABEL.get(c_rc, c_rc),
             "event_count": int(num(r["n"])),
             "domains":     domains,
             "avg_goldstein": round(num(r["avg_g"]), 2),
@@ -1046,7 +734,7 @@ async def causal_score(event_id: str = "", country: str = "IN"):
             "trace": {
                 "why":        why,
                 "terms":      terms,
-                "intercept":  CAUSAL_INTERCEPT,
+                "intercept":  scoring.CAUSAL_INTERCEPT,
                 "z":          round(z, 3),
                 "grade_rule": rule,
                 # Same code both sides: cause and effect spike days are the same
@@ -1085,7 +773,7 @@ async def causal_score(event_id: str = "", country: str = "IN"):
             "groups":      n_groups,
             "kept":        len(cands),
             "deduped":     len(scored),
-            "min_group":   MIN_GROUP_EVENTS,
+            "min_group":   scoring.MIN_GROUP_EVENTS,
             "actor_probe": probe,
             "actor_tokens": [
                 {"token": t,
@@ -1096,15 +784,15 @@ async def causal_score(event_id: str = "", country: str = "IN"):
                  "reason": ("selected" if t in probe else
                             "never appears in the corpus" if tok_idf[t]["df"] == 0 else
                             f"too common — in {tok_idf[t]['share']*100:.1f}% of events"
-                            if tok_idf[t]["share"] > ACTOR_MAX_SHARE else
+                            if tok_idf[t]["share"] > scoring.ACTOR_MAX_SHARE else
                             "usable but not among the rarest")}
                 for t in sorted(tok_idf, key=lambda x: (-tok_idf[x]["idf"], x))
             ],
         },
-        "channels":   CHANNEL_META,
-        "weights":    CAUSAL_W,
-        "intercept":  CAUSAL_INTERCEPT,
-        "window_days": CAUSAL_WINDOW_DAYS,
+        "channels":   scoring.CHANNEL_META,
+        "weights":    scoring.CAUSAL_W,
+        "intercept":  scoring.CAUSAL_INTERCEPT,
+        "window_days": scoring.CAUSAL_WINDOW_DAYS,
         "candidates": scored[:14],
         "grade_counts": counts,
         "coverage":   round(coverage, 3),
