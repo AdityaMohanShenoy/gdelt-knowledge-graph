@@ -21,11 +21,11 @@ DATABASE_URL = os.environ.get(
 
 
 def load():
-    path = ROOT / "pipeline" / "14_run_annotator.py"
-    spec = importlib.util.spec_from_file_location("run_annotator", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    """The serving app now lives in annotator/, free of duckdb and scoring so
+    the deployed bundle carries only what it calls."""
+    from annotator import app as annotator_app
+    import importlib
+    return importlib.reload(annotator_app)
 
 
 @pytest.fixture

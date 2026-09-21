@@ -1,0 +1,4 @@
+# The annotator's own runtime. Kept separate from the repo root so the
+# dashboard's Vercel bundle never grows a database driver it does not use.
+fastapi>=0.100.0
+asyncpg>=0.31.0
