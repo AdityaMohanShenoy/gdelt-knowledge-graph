@@ -96,6 +96,26 @@ and their commands should not be used to produce the new working dataset.
 
 The local raw GDELT snapshot remains under `out_parquet/`. It is intentionally ignored by Git and is the input for the fresh India-focused workflow.
 
+## Annotating causal claims
+
+`pipeline/14_run_annotator.py` seeds candidate pairs into the evidence store and
+serves the review screen that P2.4's annotation run uses.
+
+```bash
+python pipeline/14_run_annotator.py seed --targets 40
+python pipeline/14_run_annotator.py serve --port 8200
+open "http://127.0.0.1:8200/?annotator=your-name"
+```
+
+Keys: `a` accept, `e` change strength, `r` reject, `1`-`8` pick a rejection
+reason, `m` reveal what the scorer thought. The machine's own score is hidden by
+default on purpose — P3.4 measures calibration by comparing it against the human
+number, which is worth nothing if the human saw it first.
+
+Every candidate is stored, including ones the scorer would drop: the rejections
+are the hard negatives. The queue serves each target's strongest unjudged
+candidate so coverage spreads across events rather than draining one.
+
 ## Pipeline layout
 
 `pipeline/` is one continuous corpus pipeline. `01_build_india_universe`

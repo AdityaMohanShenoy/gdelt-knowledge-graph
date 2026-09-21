@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS entities (
 
 CREATE TABLE IF NOT EXISTS events (
     event_id           BIGSERIAL PRIMARY KEY,
+    -- Provenance back to the record this canonical event was seeded from
+    -- (a GDELT GlobalEventID today). Lets seeding be idempotent before P2.2
+    -- canonicalisation exists to do it properly.
+    external_id        TEXT UNIQUE,
     event_type         TEXT,
     description        TEXT,
     -- A canonical event carries a point estimate plus the interval it is known
@@ -156,6 +160,11 @@ CREATE TABLE IF NOT EXISTS build_versions (
     graph_version TEXT NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE events ADD COLUMN IF NOT EXISTS external_id TEXT;
+-- Plain rather than partial: ON CONFLICT cannot infer a partial index, and
+-- Postgres already allows many NULLs in a unique index.
+CREATE UNIQUE INDEX IF NOT EXISTS events_external_id_idx ON events (external_id);
 
 CREATE INDEX IF NOT EXISTS mentions_source_idx ON mentions (source_id);
 CREATE INDEX IF NOT EXISTS mentions_event_idx ON mentions (event_id);

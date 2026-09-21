@@ -1,5 +1,55 @@
 # Changelog
 
+## 2026-09-21 — P2.3: the annotation tool, pulled forward
+
+`pipeline/14_run_annotator.py` plus `frontend/annotate.html`. Scheduled in
+Phase 2, built now because labelling is the actual bottleneck: P3.5 showed the
+scorer's `pattern` grade has no discriminative power, and the fix (P3.4
+calibration) cannot start without labels.
+
+    python pipeline/14_run_annotator.py seed --targets 40
+    python pipeline/14_run_annotator.py serve --port 8200
+
+**The machine's score is hidden by default.** P3.4 measures calibration by
+comparing machine strength against the human's, which is worth nothing if the
+human read the machine's number first. Press `m` to reveal it deliberately.
+This is the one design decision the brief really turns on.
+
+A local server rather than routes in `app.py`, which the plan assumed. `app.py`
+is the Vercel function, CLAUDE.md holds it to one runtime data source, and it
+could not reach this Postgres anyway. Same shape as `08_run_viewer.py`.
+
+Seeding writes real evidence-store rows — an `events` row per event, a `claims`
+row per pair including ones the scorer would drop, `claim_channels` per channel
+— so what gets judged is the record rather than a scratch file. 40 targets
+produced 3,642 claims.
+
+The queue serves each target's **strongest unjudged candidate**, not the next
+claim by id. At ~90 candidates per target, id order would exhaust one event
+before the next was ever seen; P2.4 wants ~600 pairs across ~500 seeds, so
+coverage has to spread across targets.
+
+Interface: the lag axis is the hero — cause left, effect right, the day gap as
+real horizontal distance, since that is the comparison every judgement turns on.
+System serif for evidence, system sans for chrome, no webfonts so it works
+offline. Keyboard-first: `a`/`e`/`r`, `1`-`8` for rejection reasons, `m` for the
+machine score.
+
+Two bugs found while wiring it up. `best_time` is TIMESTAMPTZ, so seeding a bare
+date was read as local midnight and stored as 18:30 UTC the day before — every
+event sat on the wrong UTC day. GDELT days are UTC days and are now stored as
+such. And `ON CONFLICT` cannot infer a partial unique index, so
+`events.external_id` uses a plain one.
+
+`httpx` was declared as a dev dependency but never installed in this venv, which
+is why `tests/test_article_api.py` had been silently skipping all along. It is
+installed now and those 3 tests pass, alongside 6 new ones covering queue
+spread, the machine value surviving beside the human one, rejection requiring a
+taxonomy reason, and the rejected set staying queryable.
+
+Incidentally confirmed the append-only discipline is real: clearing test
+annotations with DELETE was refused by the trigger.
+
 ## 2026-09-21 — P3.5: negative controls, and GATE 3.5 fails
 
 `pipeline/31_negative_controls.py` scores pairs that cannot be causal and
