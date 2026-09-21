@@ -10,7 +10,12 @@ from contextlib import asynccontextmanager
 
 import asyncpg
 
-from .app import DEFAULT_SCHEMA, build_app, search_path_setup
+# Vercel loads this file as a top-level module with its directory on the path,
+# so the package-relative import that works locally fails there.
+try:
+    from app import DEFAULT_SCHEMA, build_app, search_path_setup
+except ImportError:  # imported as annotator.index
+    from .app import DEFAULT_SCHEMA, build_app, search_path_setup
 
 DATABASE_URL = os.environ["EVIDENCE_DATABASE_URL"]
 SCHEMA = os.environ.get("EVIDENCE_SCHEMA", DEFAULT_SCHEMA)
