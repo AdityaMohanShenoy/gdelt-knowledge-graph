@@ -84,6 +84,7 @@ async def worker(
     max_response_bytes: int,
     per_host_concurrency: int,
     max_attempts: int,
+    max_article_date: str | None,
     claim_limit: int,
     claim_state: dict[str, int],
     claim_lock: asyncio.Lock,
@@ -101,7 +102,7 @@ async def worker(
             claim_state["claimed"] += 1
 
         await throttle.wait(host_of(job.url_key))
-        result = await fetch_once(session, job, max_response_bytes)
+        result = await fetch_once(session, job, max_response_bytes, max_article_date)
         content_hash = hashlib.sha256(result.body).hexdigest() if result.body else None
         stored_raw_path = (
             write_raw_html(raw_dir, result.body, content_hash)
@@ -152,6 +153,7 @@ async def ingest_articles(args: argparse.Namespace) -> dict[str, Any]:
                         args.max_response_bytes,
                         args.per_host_concurrency,
                         max_attempts,
+                        args.max_article_date,
                         args.limit,
                         claim_state,
                         claim_lock,
@@ -181,6 +183,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--raw-dir", default=str(DEFAULT_RAW_DIR))
     parser.add_argument("--concurrency", type=int, default=CONCURRENCY)
     parser.add_argument("--per-host-concurrency", type=int, default=PER_HOST_CONCURRENCY)
+    parser.add_argument("--max-article-date", default=None,
+                        help="ISO upper bound on publication dates; unbounded, "
+                             "htmldate falls back to the crawl date on ~15% of pages")
     parser.add_argument("--host-delay", type=float, default=HOST_DELAY_SECONDS,
                         help="minimum seconds between requests to one host")
     parser.add_argument("--db-pool-size", type=int, default=DB_POOL_SIZE)

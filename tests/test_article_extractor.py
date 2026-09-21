@@ -1,3 +1,4 @@
+import datetime
 import importlib.util
 import json
 from pathlib import Path
@@ -321,3 +322,55 @@ def test_normalize_block_still_trims_pipes_and_whitespace():
     assert extractor._normalize_extracted_block("| | |") == ""
     assert extractor._normalize_extracted_block("  plain text  ") == "plain text"
     assert extractor._normalize_extracted_block("a  b\n c") == "a b c"
+
+
+def _dated_html(meta: str, token: str = "alpha") -> str:
+    # trafilatura runs with deduplicate=True and keeps an LRU of seen blocks, so
+    # two tests sharing body text make the second one extract nothing.
+    body = "".join(
+        f"<p>The {token} committee paragraph {i} records prose long enough to "
+        f"clear the extractor minimums for length and sentence count.</p>"
+        for i in range(8)
+    )
+    return f"<html><head>{meta}<title>Dated article</title></head><body><article>{body}</article></body></html>"
+
+
+def test_extract_article_keeps_the_publication_date():
+    extractor = load_extractor()
+    html = _dated_html('<meta property="article:published_time" content="2024-03-12T10:00:00Z">', "harvest")
+
+    result = extractor.extract_article(html, url="https://example.test/a")
+
+    assert result.status == "extracted"
+    assert result.published_at == datetime.date(2024, 3, 12)
+
+
+def test_max_date_rejects_a_crawl_date_masquerading_as_publication():
+    """~15% of stored articles carry the crawl year rather than the publication
+    date. Unbounded, a 2024 article reads as 2026 and corrupts any temporal
+    reasoning built on it."""
+    extractor = load_extractor()
+    html = _dated_html('<meta property="article:modified_time" content="2026-09-19T10:00:00Z">', "monsoon")
+
+    unbounded = extractor.extract_article(html, url="https://example.test/a")
+    bounded = extractor.extract_article(
+        html, url="https://example.test/a", max_date="2025-01-31"
+    )
+
+    assert unbounded.published_at == datetime.date(2026, 9, 19)
+    assert bounded.published_at != datetime.date(2026, 9, 19), \
+        "max_date must reject the out-of-range date"
+
+
+def test_missing_date_is_none_not_a_guess():
+    extractor = load_extractor()
+    result = extractor.extract_article(_dated_html("", "riverbank"), url="https://example.test/a")
+    assert result.status == "extracted"
+    assert result.published_at is None
+
+
+def test_malformed_dates_become_none_rather_than_failing():
+    extractor = load_extractor()
+    for junk in ("not-a-date", "", None, 20240312, "2024-13-45"):
+        assert extractor.parse_published_date(junk) is None
+    assert extractor.parse_published_date("2024-03-12T10:00:00Z") == datetime.date(2024, 3, 12)

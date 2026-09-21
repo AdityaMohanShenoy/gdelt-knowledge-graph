@@ -158,6 +158,7 @@ async def fetch_once(
     session: aiohttp.ClientSession,
     job: Job,
     max_response_bytes: int,
+    max_article_date: str | None = None,
 ) -> FetchResult:
     try:
         async with session.get(
@@ -198,7 +199,7 @@ async def fetch_once(
             body = b"".join(chunks)
             if not content_type_is_html(content_type, body):
                 return FetchResult("unsupported_content", status, content_type, final_url)
-            extraction = extract_article(body, url=final_url)
+            extraction = extract_article(body, url=final_url, max_date=max_article_date)
             return FetchResult(
                 extraction.status,
                 status,
@@ -292,6 +293,7 @@ async def save_result(
                 extraction_reason = $11,
                 extractor_version = $12,
                 last_error = $13,
+                published_at = $15,
                 lease_expires_at = NULL,
                 next_attempt_at = COALESCE($14, NOW()),
                 fetched_at = CASE WHEN $2 <> 'retryable_error' THEN NOW() ELSE fetched_at END
@@ -311,6 +313,7 @@ async def save_result(
             EXTRACTOR_VERSION if extraction else None,
             error,
             next_attempt_at,
+            extraction.published_at if extraction else None,
         )
 
 

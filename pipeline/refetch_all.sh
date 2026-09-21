@@ -25,6 +25,9 @@ RETRIES="${RETRIES:-1}"
 # so throughput holds while each host sees one request every HOST_DELAY seconds.
 PER_HOST="${PER_HOST:-1}"
 HOST_DELAY="${HOST_DELAY:-2}"
+# Unbounded, htmldate falls back to the crawl date on ~15% of pages. The
+# corpus is 2024 events, so anything past January 2025 is the crawler.
+MAX_ARTICLE_DATE="${MAX_ARTICLE_DATE:-2025-01-31}"
 
 remaining() {
   docker exec "$CONTAINER" psql -U gdelt -d gdelt -t -A -c \
@@ -41,7 +44,8 @@ while :; do
     --database-url "$DB" --limit "$BATCH" \
     --concurrency "$CONCURRENCY" --db-pool-size "$CONCURRENCY" \
     --per-host-concurrency "$PER_HOST" --host-delay "$HOST_DELAY" \
-    --timeout "$FETCH_TIMEOUT" --retries "$RETRIES" &
+    --timeout "$FETCH_TIMEOUT" --retries "$RETRIES" \
+    --max-article-date "$MAX_ARTICLE_DATE" &
   pid=$!
   ( sleep "$BUDGET"; kill -9 "$pid" 2>/dev/null ) & guard=$!
   wait "$pid" 2>/dev/null

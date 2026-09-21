@@ -1,6 +1,7 @@
+import datetime
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from html import unescape
 from typing import Any
 
@@ -10,7 +11,10 @@ MIN_ARTICLE_CHARS = 400
 MIN_ARTICLE_BLOCKS = 2
 MIN_SENTENCE_COUNT = 3
 MAX_GATE_CUE_LENGTH = 1200
-EXTRACTOR_VERSION = f"trafilatura-{trafilatura.__version__}-precision.v2"
+# v3 captures the publication date and honours a max_date bound. The bump is
+# load bearing: 09_reprocess only promotes rows whose extractor_version
+# differs, so without it a backfill would skip every already-extracted row.
+EXTRACTOR_VERSION = f"trafilatura-{trafilatura.__version__}-precision.v3"
 
 PAYWALL_CUES = re.compile(
     r"(?:subscribe to continue|subscribe to read|sign in to read|premium content|"
@@ -153,6 +157,18 @@ class ExtractionResult:
     title: str
     text: str
     reason: str | None = None
+    # A real date, not the ISO string trafilatura hands back: the column is a
+    # DATE, and a malformed value should become None rather than fail a batch.
+    published_at: datetime.date | None = None
+
+
+def parse_published_date(value: object) -> datetime.date | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.date.fromisoformat(value.strip()[:10])
+    except ValueError:
+        return None
 
 
 def normalize_text(value: str) -> str:
@@ -341,11 +357,17 @@ def _extract_candidate(
     html_content: str | bytes,
     url: str | None,
     favor_recall: bool,
+    max_date: str | None = None,
 ) -> ExtractionResult:
     try:
         extracted = trafilatura.extract(
             html_content,
             url=url,
+            # Unbounded, htmldate falls back to a page's last-modified or render
+            # date: measured on stored articles, 11 of 74 dates were the crawl
+            # year rather than publication. Bounding the range recovered the
+            # real date for 10 of those 11 and dropped the last.
+            date_extraction_params={"max_date": max_date} if max_date else None,
             favor_precision=not favor_recall,
             favor_recall=favor_recall,
             include_comments=False,
@@ -373,7 +395,10 @@ def _extract_candidate(
     text = _remove_leading_page_noise(text, title)
     text = _remove_leading_title(text, title)
     text = _remove_repeated_leading_wrapper(text, title)
-    return _classify_candidate(title, text, _source_signal_text(html_content), url)
+    result = _classify_candidate(title, text, _source_signal_text(html_content), url)
+    # Attached here rather than threaded through _classify_candidate's eight
+    # return paths, which care about text quality and not about metadata.
+    return replace(result, published_at=parse_published_date(payload.get("date")))
 
 
 def extract_article_variant(
@@ -381,8 +406,9 @@ def extract_article_variant(
     url: str | None = None,
     *,
     favor_recall: bool = False,
+    max_date: str | None = None,
 ) -> ExtractionResult:
-    return _extract_candidate(html_content, url, favor_recall=favor_recall)
+    return _extract_candidate(html_content, url, favor_recall=favor_recall, max_date=max_date)
 
 
 def _result_priority(result: ExtractionResult) -> tuple[int, int]:
@@ -401,15 +427,20 @@ def extract_article(
     url: str | None = None,
     *,
     favor_recall: bool = False,
+    max_date: str | None = None,
 ) -> ExtractionResult:
     if favor_recall:
-        return _extract_candidate(html_content, url, favor_recall=True)
+        return _extract_candidate(html_content, url, favor_recall=True, max_date=max_date)
 
-    precision_result = _extract_candidate(html_content, url, favor_recall=False)
+    precision_result = _extract_candidate(
+        html_content, url, favor_recall=False, max_date=max_date
+    )
     if precision_result.status in {"extracted", "paywall", "blocked"}:
         return precision_result
 
-    recall_result = _extract_candidate(html_content, url, favor_recall=True)
+    recall_result = _extract_candidate(
+        html_content, url, favor_recall=True, max_date=max_date
+    )
     if recall_result.status == "extracted":
         return recall_result
     return max((precision_result, recall_result), key=_result_priority)

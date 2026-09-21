@@ -1,5 +1,46 @@
 # Changelog
 
+## 2026-09-21 — The extractor keeps the publication date
+
+trafilatura returned `date`, `language` and `author` on every extraction and the
+extractor kept only title and text. `ExtractionResult` now carries
+`published_at`, `article_documents` has a `published_at` column, and both the
+fetch path and the offline reprocess persist it.
+
+**A bound is required, not optional.** Unbounded, htmldate falls back to a
+page's last-modified or render date. Measured on stored articles: **11 of 74
+dates were the crawl year rather than publication** — real 2024 stories reading
+as 2026, one of them with `/20240913/` in its own URL. `original_date=True` did
+not help. Passing `max_date` recovered the true 2024 date for 10 of those 11 and
+dropped the last: 63 correct rose to 73, and 11 wrong fell to 0. A wrong
+publication date is worse than a missing one for anything temporal, so the
+extractor takes a `max_date` and the pipelines expose `--max-article-date`.
+
+`published_at` is a `datetime.date`, not the ISO string trafilatura hands back:
+the column is a DATE, and a malformed value now becomes None instead of failing
+a whole batch.
+
+`EXTRACTOR_VERSION` is bumped to `v3`, and the bump is load bearing.
+`09_reprocess_articles` only promotes rows whose `extractor_version` differs, so
+without it a backfill would silently skip every already-extracted row.
+
+Measured on a 300-row backfill: 71.7% carry a date, 94% of those land in 2024.
+The residual 6% (a pair in 2011, five in January 2025) is left alone
+deliberately. A second bound inside the extractor would be another guess; the
+principled check is against the GDELT event day when `sources` is loaded, which
+is where the event date is actually known.
+
+`language` is **not** captured. trafilatura populated it in 0 of 60 stored
+articles — it is inert without `py3langid`, which is not installed. The
+`<html lang>` heuristic in `probe_branching`'s sibling P0.1 probe remains the
+better source. `author` is populated in roughly half of pages but has no
+consumer in the plan.
+
+Backfilling the existing corpus needs no refetching — the stored HTML is on
+disk. Run one promote pass once the refetch finishes:
+
+    python pipeline/09_reprocess_articles.py promote --max-article-date 2025-01-31
+
 ## 2026-09-21 — P1.1: the evidence store
 
 `store/schema.sql` and `store/db.py`. `python -m store.db --init` applies it

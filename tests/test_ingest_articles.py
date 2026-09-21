@@ -118,8 +118,8 @@ def test_fetch_once_passes_final_url_to_extractor():
     calls = []
     original_extract_article = ingester.extract_article
 
-    def fake_extract_article(body, url=None):
-        calls.append((body, url))
+    def fake_extract_article(body, url=None, *, max_date=None):
+        calls.append((body, url, max_date))
         return ingester.ExtractionResult("extracted", "Fixture", "A readable article body.")
 
     ingester.extract_article = fake_extract_article
@@ -154,7 +154,7 @@ def test_fetch_once_passes_final_url_to_extractor():
         ingester.extract_article = original_extract_article
 
     assert result.status == "extracted"
-    assert calls == [(b"<html><body>fixture</body></html>", "https://example.test/final")]
+    assert calls == [(b"<html><body>fixture</body></html>", "https://example.test/final", None)]
 
 
 async def exercise_host_fair_claim(fetch):

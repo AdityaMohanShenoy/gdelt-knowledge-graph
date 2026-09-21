@@ -42,6 +42,10 @@ CREATE TABLE IF NOT EXISTS article_documents (
     )
 );
 
+-- Publication date as reported by the extractor. Added after the table shipped,
+-- so it is an ALTER rather than a column in the CREATE above.
+ALTER TABLE article_documents ADD COLUMN IF NOT EXISTS published_at DATE;
+
 CREATE INDEX IF NOT EXISTS article_documents_status_idx
     ON article_documents (status, next_attempt_at, document_id);
 

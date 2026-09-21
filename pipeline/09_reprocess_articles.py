@@ -113,13 +113,18 @@ def run_candidate(
     row: asyncpg.Record,
     raw_dir: Path,
     mode: CandidateMode = "production",
+    max_article_date: str | None = None,
 ) -> ExtractionResult:
     body = read_raw_html(row["raw_html_path"], raw_dir)
     if mode == "precision":
-        return extract_article_variant(body, url=row_url(row), favor_recall=False)
+        return extract_article_variant(
+            body, url=row_url(row), favor_recall=False, max_date=max_article_date
+        )
     if mode == "recall":
-        return extract_article_variant(body, url=row_url(row), favor_recall=True)
-    return extract_article(body, url=row_url(row))
+        return extract_article_variant(
+            body, url=row_url(row), favor_recall=True, max_date=max_article_date
+        )
+    return extract_article(body, url=row_url(row), max_date=max_article_date)
 
 
 async def benchmark(
@@ -174,6 +179,7 @@ async def promote(
     raw_dir: Path,
     batch_size: int,
     limit: int,
+    max_article_date: str | None = None,
 ) -> dict[str, Any]:
     last_document_id = 0
     processed = 0
@@ -200,7 +206,8 @@ async def promote(
         for row in rows:
             last_document_id = row["document_id"]
             try:
-                result = run_candidate(row, raw_dir, mode="production")
+                result = run_candidate(row, raw_dir, mode="production",
+                                       max_article_date=max_article_date)
             except (OSError, EOFError, gzip.BadGzipFile) as error:
                 counts[f"read_error:{type(error).__name__}"] += 1
                 continue
@@ -213,6 +220,7 @@ async def promote(
                     text_length = $5,
                     extraction_reason = $6,
                     extractor_version = $7,
+                    published_at = $8,
                     last_error = NULL
                 WHERE document_id = $1
                   AND status <> 'fetching'
@@ -225,6 +233,7 @@ async def promote(
                 len(result.text),
                 result.reason,
                 EXTRACTOR_VERSION,
+                result.published_at,
             )
             if updated == "UPDATE 1":
                 counts[result.status] += 1
@@ -252,7 +261,8 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
                 Path(args.output).resolve(),
                 args.sample_size,
             )
-        return await promote(pool, raw_dir, args.batch_size, args.limit)
+        return await promote(pool, raw_dir, args.batch_size, args.limit,
+                             args.max_article_date)
     finally:
         await pool.close()
 
@@ -266,6 +276,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample-size", type=int, default=DEFAULT_SAMPLE_SIZE)
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--max-article-date", default=None,
+                        help="ISO upper bound on publication dates")
     return parser.parse_args()
 
 
