@@ -185,7 +185,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--per-host-concurrency", type=int, default=PER_HOST_CONCURRENCY)
     parser.add_argument("--max-article-date", default=None,
                         help="ISO upper bound on publication dates; unbounded, "
-                             "htmldate falls back to the crawl date on ~15% of pages")
+                             "htmldate falls back to the crawl date on ~15%% of pages")
     parser.add_argument("--host-delay", type=float, default=HOST_DELAY_SECONDS,
                         help="minimum seconds between requests to one host")
     parser.add_argument("--db-pool-size", type=int, default=DB_POOL_SIZE)
