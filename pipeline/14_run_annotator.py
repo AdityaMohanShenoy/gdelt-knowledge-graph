@@ -15,6 +15,8 @@ record, not a scratch file.
 
 import argparse
 import asyncio
+import os
+import secrets
 from contextlib import asynccontextmanager
 import datetime
 import json
@@ -24,7 +26,7 @@ from pathlib import Path
 import asyncpg
 import duckdb
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -44,6 +46,11 @@ REJECT_REASONS = [
     "WRONG_DIRECTION", "OTHER",
 ]
 ANNOTATORS = ["pabo", "nambi", "akka", "shenoy"]
+
+# Unset, the tool is open — which is fine on localhost. Set it before putting
+# this on a public URL: `annotations` refuses DELETE, so anything a stranger
+# writes is permanent in the set P3.4's calibration rests on.
+ANNOTATOR_TOKEN = os.environ.get("ANNOTATOR_TOKEN", "")
 DOUBLE_ANNOTATED_EVERY = 4   # P2.4 wants a quarter judged twice, for agreement
 
 RELATION_TYPES = [
@@ -242,6 +249,19 @@ class Judgement(BaseModel):
     reason_text: str | None = None
 
 
+def require_token(
+    token: str = "",
+    x_annotator_token: str | None = Header(default=None),
+) -> None:
+    """Query param or header, compared in constant time. A no-op when no token
+    is configured, so local use is unchanged."""
+    if not ANNOTATOR_TOKEN:
+        return
+    offered = x_annotator_token or token or ""
+    if not secrets.compare_digest(offered, ANNOTATOR_TOKEN):
+        raise HTTPException(401, "this link needs a valid token")
+
+
 def build_app(pool_holder: dict, lifespan=None) -> FastAPI:
     api = FastAPI(title="Causal claim annotation", lifespan=lifespan)
 
@@ -249,12 +269,12 @@ def build_app(pool_holder: dict, lifespan=None) -> FastAPI:
     async def index():
         return FileResponse(FRONTEND)
 
-    @api.get("/api/meta")
+    @api.get("/api/meta", dependencies=[Depends(require_token)])
     async def meta():
         return {"reject_reasons": REJECT_REASONS, "relation_types": RELATION_TYPES,
                 "annotators": ANNOTATORS}
 
-    @api.get("/api/progress")
+    @api.get("/api/progress", dependencies=[Depends(require_token)])
     async def progress(annotator: str = ""):
         pool = pool_holder["pool"]
         mine = await pool.fetchrow("""
@@ -275,7 +295,7 @@ def build_app(pool_holder: dict, lifespan=None) -> FastAPI:
         return {"annotator": annotator, **dict(mine),
                 "team": {r["annotator"]: r["judged"] for r in team}}
 
-    @api.get("/api/claims/next")
+    @api.get("/api/claims/next", dependencies=[Depends(require_token)])
     async def next_claim(annotator: str = ""):
         if annotator not in ANNOTATORS:
             raise HTTPException(400, f"pick one of {', '.join(ANNOTATORS)}")
@@ -324,7 +344,7 @@ def build_app(pool_holder: dict, lifespan=None) -> FastAPI:
         claim["done"] = False
         return claim
 
-    @api.post("/api/claims/{claim_id}/judge")
+    @api.post("/api/claims/{claim_id}/judge", dependencies=[Depends(require_token)])
     async def judge(claim_id: int, body: Judgement):
         if body.action not in {"accept", "edit", "reject"}:
             raise HTTPException(400, "action must be accept, edit or reject")
@@ -355,7 +375,7 @@ def build_app(pool_holder: dict, lifespan=None) -> FastAPI:
                 body.relation_type)
         return {"ok": True, "claim_id": claim_id}
 
-    @api.get("/api/claims/rejected")
+    @api.get("/api/claims/rejected", dependencies=[Depends(require_token)])
     async def rejected(limit: int = 200):
         got = await pool_holder["pool"].fetch("""
             SELECT c.claim_id, c.machine_strength, c.grade,

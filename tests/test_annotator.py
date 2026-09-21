@@ -237,3 +237,44 @@ def test_a_persons_queue_empties_when_their_share_is_done(client):
         client.post(f"/api/claims/{claim['claim_id']}/judge",
                     json={"action": "accept", "annotator": "akka", "human_strength": 0.5})
     assert _next(client, "akka")["done"] is True
+
+
+def _client_with_token(monkeypatch_value):
+    """A second app instance with a token configured, sharing nothing else."""
+    annot = load()
+    annot.ANNOTATOR_TOKEN = monkeypatch_value
+    return annot
+
+
+def test_no_token_configured_leaves_the_tool_open(client):
+    """Local use must not need a token, or the default workflow breaks."""
+    assert client.get("/api/meta").status_code == 200
+
+
+def test_a_configured_token_is_required_on_every_data_route():
+    annot = _client_with_token("s3cret")
+    holder: dict = {}
+    app = annot.build_app(holder, None)
+    with TestClient(app) as c:
+        for path in ("/api/meta", "/api/progress", "/api/claims/next",
+                     "/api/claims/rejected"):
+            assert c.get(path).status_code == 401, f"{path} was reachable without a token"
+        assert c.post("/api/claims/1/judge",
+                      json={"action": "accept", "annotator": "pabo"}).status_code == 401
+
+
+def test_the_right_token_passes_by_query_or_header():
+    annot = _client_with_token("s3cret")
+    holder: dict = {}
+    with TestClient(annot.build_app(holder, None)) as c:
+        assert c.get("/api/meta", params={"token": "s3cret"}).status_code == 200
+        assert c.get("/api/meta", headers={"X-Annotator-Token": "s3cret"}).status_code == 200
+        assert c.get("/api/meta", params={"token": "s3cre"}).status_code == 401
+        assert c.get("/api/meta", params={"token": "s3crett"}).status_code == 401
+
+
+def test_the_page_itself_stays_reachable_so_the_error_is_legible():
+    annot = _client_with_token("s3cret")
+    holder: dict = {}
+    with TestClient(annot.build_app(holder, None)) as c:
+        assert c.get("/").status_code == 200

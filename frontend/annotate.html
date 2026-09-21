@@ -118,13 +118,30 @@
 </div>
 
 <script>
-let annotator = new URLSearchParams(location.search).get("annotator") || "";
+const params = new URLSearchParams(location.search);
+const token = params.get("token") || "";
+let annotator = params.get("annotator") || "";
+
+// Carries the token on every call, and keeps it in the address bar so a
+// refresh or a bookmark still works.
+async function api(path, options){
+  const url = new URL(path, location.origin);
+  if (token) url.searchParams.set("token", token);
+  const res = await fetch(url, options);
+  if (res.status === 401){
+    document.querySelector(".actions").style.display = "none";
+    $("screen").innerHTML = `<div class="empty">This link is missing its token.<br>
+      <span class="hint">Ask for your own link rather than editing this one.</span></div>`;
+    throw new Error("unauthorised");
+  }
+  return res;
+}
 let claim = null, meta = null, showMachine = false;
 
 const $ = (id) => document.getElementById(id);
 
 async function boot(){
-  meta = await (await fetch("/api/meta")).json();
+  meta = await (await api("/api/meta")).json();
   if (!meta.annotators.includes(annotator)) return pickWho();
   $("reason").innerHTML = meta.reject_reasons
     .map((r,i) => `<option value="${r}">${i+1} · ${r.replaceAll("_"," ").toLowerCase()}</option>`).join("");
@@ -134,7 +151,7 @@ async function boot(){
 }
 
 async function pickWho(){
-  const p = await (await fetch("/api/progress")).json();
+  const p = await (await api("/api/progress")).json();
   const done = p.team || {};
   document.querySelector(".actions").style.display = "none";
   $("screen").innerHTML = `
@@ -150,8 +167,8 @@ async function pickWho(){
 }
 
 async function load(){
-  claim = await (await fetch(`/api/claims/next?annotator=${encodeURIComponent(annotator)}`)).json();
-  const p = await (await fetch(`/api/progress?annotator=${encodeURIComponent(annotator)}`)).json();
+  claim = await (await api(`/api/claims/next?annotator=${encodeURIComponent(annotator)}`)).json();
+  const p = await (await api(`/api/progress?annotator=${encodeURIComponent(annotator)}`)).json();
   $("progress").textContent =
     `${annotator} — ${p.judged} of ${p.assigned} done, ${p.targets_left} events left`;
   render();
@@ -207,7 +224,7 @@ function closePanels(){
 }
 
 async function send(body){
-  await fetch(`/api/claims/${claim.claim_id}/judge`, {
+  await api(`/api/claims/${claim.claim_id}/judge`, {
     method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({annotator, ...body}),
   });
@@ -218,7 +235,7 @@ document.addEventListener("click", (e) => {
   const who = e.target.closest("[data-who]")?.dataset.who;
   if (who){
     annotator = who;
-    history.replaceState(null, "", `?annotator=${encodeURIComponent(who)}`);
+    history.replaceState(null, "", `?annotator=${encodeURIComponent(who)}` + (token ? `&token=${encodeURIComponent(token)}` : ""));
     document.querySelector(".actions").style.display = "";
     return load();
   }

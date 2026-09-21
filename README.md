@@ -107,6 +107,15 @@ python pipeline/14_run_annotator.py serve --port 8200
 open "http://127.0.0.1:8200/?annotator=your-name"
 ```
 
+Set `ANNOTATOR_TOKEN` before exposing this anywhere but localhost — `annotations`
+refuses DELETE, so anything a stranger writes is permanent in the set the
+calibration rests on. Unset, the tool is open, which is what you want locally.
+
+    ANNOTATOR_TOKEN=$(python -c 'import secrets;print(secrets.token_urlsafe(24))') \
+      python pipeline/14_run_annotator.py serve
+
+Then hand each person `?annotator=<name>&token=<token>`.
+
 Open it and pick your name — pabo, nambi, akka or shenoy. Each queue is that
 person's own. A quarter of claims are dealt to a second reader as well, so
 inter-annotator agreement can be measured; re-run `assign` after seeding more.
