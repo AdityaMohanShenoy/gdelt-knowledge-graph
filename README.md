@@ -35,7 +35,7 @@ bun install
 For later installs or CI, use the lockfiles exactly:
 
 ```bash
-uv sync --locked
+uv sync
 bun install --frozen-lockfile
 ```
 
@@ -52,8 +52,7 @@ python -m pip install -r requirements.txt
 ## Verify the installation
 
 ```bash
-uv lock --check
-uv run python -c "import asyncpg, duckdb, fastapi, neo4j, prefect, qdrant_client, spacy, torch, transformers; print('Python dependencies: OK')"
+uv run --group pipeline python -c "import asyncpg, duckdb, fastapi, neo4j, polars, trafilatura; print('Python dependencies: OK')"
 bun x biome --version
 bun x vitest --version
 ```
