@@ -140,6 +140,18 @@ let claim = null, meta = null, showMachine = false;
 
 const $ = (id) => document.getElementById(id);
 
+// The cause is a (day, event type) group, never a single incident — the scorer
+// collapses a day's events of one type into one candidate. Saying so stops the
+// left side reading like an event whose name is missing.
+function causeScale(c){
+  return c.cause_actors ? `(${c.cause_actors})` : "";
+}
+function longDate(iso){
+  const d = new Date(iso + "T00:00:00Z");
+  return d.toLocaleDateString("en-GB",
+    {day:"numeric", month:"long", year:"numeric", timeZone:"UTC"});
+}
+
 async function boot(){
   meta = await (await api("/api/meta")).json();
   if (!meta.annotators.includes(annotator)) return pickWho();
@@ -189,12 +201,23 @@ function render(){
       <div class="v">${c.raw_inputs.plain || ""}</div></div>`;
   }).join("");
   s.innerHTML = `
+    <div class="proposition">
+      <b>${claim.cause_type} activity on ${longDate(claim.cause_time)}</b>
+      ${causeScale(claim)} was a cause of the
+      <b>${claim.effect_type.toLowerCase()} on ${longDate(claim.effect_time)}</b>${
+        claim.effect_actors ? ` involving ${claim.effect_actors}` : ""}.
+      <span class="q">Accept if you think that is true. It is one candidate cause of
+        that event, not the only one.</span>
+      <span class="suggests">Suggested relation <code>${claim.suggested_relation}</code>
+        — from the ${claim.lag_days}-day gap and the event types, so change it with
+        <b>e</b> if it is wrong.</span>
+    </div>
     <div class="axis">
       <div class="node cause">
-        <div class="role">Proposed cause</div>
+        <div class="role">Proposed cause — a whole day's activity</div>
         <h2>${claim.cause_type}</h2>
         <time>${claim.cause_time}</time>
-        <p>${claim.cause_actors || ""}</p>
+        <p>${causeScale(claim)}</p>
       </div>
       <div class="gap">
         <div class="days">${claim.lag_days} days later</div>
@@ -241,8 +264,10 @@ document.addEventListener("click", (e) => {
   }
   const act = e.target.closest("[data-act]")?.dataset.act;
   if (!act || !claim || claim.done) return;
-  if (act === "accept") return send({action:"accept", human_strength:claim.machine_strength});
-  if (act === "edit"){ closePanels(); $("editPanel").classList.add("open"); $("strength").focus(); return; }
+  if (act === "accept") return send({action:"accept", human_strength:claim.machine_strength,
+                                   relation_type:claim.suggested_relation});
+  if (act === "edit"){ closePanels(); $("editPanel").classList.add("open");
+    $("relation").value = claim.suggested_relation; $("strength").focus(); return; }
   if (act === "reject"){ closePanels(); $("rejectPanel").classList.add("open"); $("reason").focus(); return; }
   if (act === "save-edit") return send({action:"edit",
       relation_type:$("relation").value, human_strength:parseFloat($("strength").value)});

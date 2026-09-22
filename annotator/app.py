@@ -50,6 +50,25 @@ RELATION_TYPES = [
 
 
 
+def suggest_relation(cause_type: str, effect_type: str, lag_days: int) -> str:
+    """A rule of thumb from lag and event type — not a model output.
+
+    P2.3 asks the screen to suggest a relation, and accepting should mean
+    agreeing with something specific rather than with an unstated proposition.
+    P0.3 will decide whether these seven types survive annotator agreement at
+    all, so this is a starting point to disagree with, not an answer.
+    """
+    if cause_type and cause_type == effect_type:
+        # Same type both sides: the effect already existed in some form, which
+        # is the only thing separating ESCALATES from TRIGGERS.
+        return "ESCALATES"
+    if lag_days <= 3:
+        return "TRIGGERS"
+    if lag_days <= 21:
+        return "MOBILIZES"
+    return "CONTRIBUTES_TO"
+
+
 class Judgement(BaseModel):
     action: str
     annotator: str
@@ -148,6 +167,8 @@ def build_app(pool_holder: dict, lifespan=None) -> FastAPI:
         claim["cause_time"] = claim["cause_time"].date().isoformat()
         claim["effect_time"] = claim["effect_time"].date().isoformat()
         claim["lag_days"] = (row["effect_time"] - row["cause_time"]).days
+        claim["suggested_relation"] = suggest_relation(
+            row["cause_type"], row["effect_type"], claim["lag_days"])
         claim["channels"] = [
             {**dict(c), "raw_inputs": json.loads(c["raw_inputs"])} for c in channels
         ]

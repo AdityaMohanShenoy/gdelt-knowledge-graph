@@ -278,3 +278,27 @@ def test_the_page_itself_stays_reachable_so_the_error_is_legible():
     holder: dict = {}
     with TestClient(annot.build_app(holder, None)) as c:
         assert c.get("/").status_code == 200
+
+
+def test_a_suggested_relation_is_offered_so_accept_means_something():
+    """Accepting an unstated proposition is not a judgement. The screen has to
+    propose a specific relation for the annotator to agree or disagree with."""
+    annot = load()
+    # Same type both sides: the effect already existed, which is the only thing
+    # separating ESCALATES from TRIGGERS.
+    assert annot.suggest_relation("Protest", "Protest", 1) == "ESCALATES"
+    assert annot.suggest_relation("Assault", "Protest", 2) == "TRIGGERS"
+    assert annot.suggest_relation("Assault", "Protest", 9) == "MOBILIZES"
+    assert annot.suggest_relation("Assault", "Protest", 40) == "CONTRIBUTES_TO"
+    for pair in (("Protest", "Protest", 1), ("Assault", "Protest", 2),
+                 ("Assault", "Protest", 9), ("Assault", "Protest", 40)):
+        assert annot.suggest_relation(*pair) in annot.RELATION_TYPES
+
+
+def test_the_served_claim_carries_its_proposition(client):
+    claim = _next(client, "pabo")
+    assert "suggested_relation" in claim
+    assert claim["suggested_relation"] in load().RELATION_TYPES
+    # Everything the sentence on screen is built from.
+    for field in ("cause_type", "effect_type", "cause_time", "effect_time", "lag_days"):
+        assert claim[field] is not None
