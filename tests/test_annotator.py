@@ -85,8 +85,11 @@ async def _seed_claims(pool):
         " VALUES ('t', '{}'::jsonb, 'test') RETURNING build_id")
     for target in range(1, 9):
         effect = await pool.fetchval(
-            "INSERT INTO events (external_id, event_type, best_time) VALUES ($1,'Protest',$2)"
-            " RETURNING event_id", f"effect-{target}", day)
+            "INSERT INTO events (external_id, event_type, best_time, source_urls)"
+            " VALUES ($1,'Protest',$2,$3::jsonb) RETURNING event_id",
+            f"effect-{target}", day,
+            '[{"url":"https://example.test/a","domain":"example.test",'
+            '"title":"A headline","published_at":"2024-06-10"}]')
         for rank, strength in enumerate((0.9, 0.7, 0.5, 0.3)):
             cause = await pool.fetchval(
                 "INSERT INTO events (external_id, event_type, best_time) VALUES ($1,'Assault',$2)"
@@ -302,3 +305,22 @@ def test_the_served_claim_carries_its_proposition(client):
     # Everything the sentence on screen is built from.
     for field in ("cause_type", "effect_type", "cause_time", "effect_time", "lag_days"):
         assert claim[field] is not None
+
+
+def test_source_articles_travel_with_the_claim(client):
+    """An outlet count is not checkable on its own. The articles behind it have
+    to reach the screen or the annotator is taking the number on trust."""
+    claim = _next(client, "pabo")
+    assert "cause_sources" in claim and "effect_sources" in claim
+    assert isinstance(claim["cause_sources"], list)
+    assert isinstance(claim["effect_sources"], list)
+
+
+def test_source_lists_survive_a_json_round_trip(client):
+    """asyncpg hands JSONB back as a string on some paths and a list on others;
+    the screen cannot render a string."""
+    claim = _next(client, "pabo")
+    for side in ("cause_sources", "effect_sources"):
+        for entry in claim[side]:
+            assert set(entry) >= {"url", "domain"}
+            assert entry["url"].startswith("http")

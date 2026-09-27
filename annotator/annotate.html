@@ -43,6 +43,19 @@
   .ch .k{color:var(--soft)}
   .ch .v{font-family:var(--serif)}
   .ch.off .v{color:var(--soft);font-style:italic}
+  .reporting{border-top:1px solid var(--rule);margin-top:1.1rem;padding-top:.9rem;
+             display:grid;grid-template-columns:1fr 1fr;gap:1.4rem}
+  .reporting h4{margin:0 0 .5rem;font-size:.78rem;letter-spacing:.06em;
+                text-transform:uppercase;color:var(--brass);font-weight:600}
+  .reporting ol{list-style:none;margin:0;padding:0;display:flex;
+                flex-direction:column;gap:.45rem}
+  .reporting a{display:block;color:var(--ink);text-decoration:none;font-family:var(--serif);
+               font-size:.95rem;line-height:1.35;border-bottom:1px solid transparent}
+  .reporting a:hover,.reporting a:focus-visible{border-bottom-color:var(--brass)}
+  .reporting .src{display:block;font-family:var(--sans);font-size:.78rem;color:var(--soft);
+                  margin-top:.1rem}
+  .reporting .none{color:var(--soft);font-size:.88rem;font-style:italic}
+  @media (max-width:620px){ .reporting{grid-template-columns:1fr;gap:1rem} }
   .machine{margin-top:.9rem;padding-top:.7rem;border-top:1px dashed var(--rule);
            color:var(--soft);font-size:.88rem}
   .machine[hidden]{display:none}
@@ -146,6 +159,19 @@ const $ = (id) => document.getElementById(id);
 function causeScale(c){
   return c.cause_actors ? `(${c.cause_actors})` : "";
 }
+// The outlet count is not checkable on its own; these are the articles it counts.
+function links(list){
+  if (!list || !list.length) return `<p class="none">No source article recorded.</p>`;
+  return `<ol>${list.map(a => `
+    <li><a href="${a.url}" target="_blank" rel="noopener noreferrer">
+      ${a.title ? escapeHtml(a.title) : a.domain || a.url}
+      <span class="src">${a.domain}${a.published_at ? ` · ${a.published_at}` : ""}</span>
+    </a></li>`).join("")}</ol>`;
+}
+function escapeHtml(t){
+  return t.replace(/[&<>"']/g, ch => (
+    {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+}
 function longDate(iso){
   const d = new Date(iso + "T00:00:00Z");
   return d.toLocaleDateString("en-GB",
@@ -233,6 +259,16 @@ function render(){
     <section class="evidence">
       <h3>What the evidence says</h3>
       ${ch}
+      <div class="reporting">
+        <div>
+          <h4>Reporting behind the cause</h4>
+          ${links(claim.cause_sources)}
+        </div>
+        <div>
+          <h4>Reporting on the event explained</h4>
+          ${links(claim.effect_sources)}
+        </div>
+      </div>
       <div class="machine" id="machine" ${showMachine ? "" : "hidden"}>
         The scorer put this at ${claim.machine_strength} and graded it
         ${claim.grade}. Shown only on request, so it cannot anchor your own number.

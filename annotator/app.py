@@ -149,8 +149,10 @@ def build_app(pool_holder: dict, lifespan=None) -> FastAPI:
             SELECT c.claim_id, c.machine_strength, c.grade,
                    cause.description AS cause_actors, cause.event_type AS cause_type,
                    cause.best_time AS cause_time, cause.external_id AS cause_ref,
+                   cause.source_urls AS cause_sources,
                    eff.description AS effect_actors, eff.event_type AS effect_type,
-                   eff.best_time AS effect_time, eff.external_id AS effect_ref
+                   eff.best_time AS effect_time, eff.external_id AS effect_ref,
+                   eff.source_urls AS effect_sources
             FROM best b
             JOIN claims c ON c.claim_id = b.claim_id
             JOIN events cause ON cause.event_id = c.cause_id
@@ -167,6 +169,9 @@ def build_app(pool_holder: dict, lifespan=None) -> FastAPI:
         claim["cause_time"] = claim["cause_time"].date().isoformat()
         claim["effect_time"] = claim["effect_time"].date().isoformat()
         claim["lag_days"] = (row["effect_time"] - row["cause_time"]).days
+        for side in ("cause_sources", "effect_sources"):
+            raw = claim.get(side)
+            claim[side] = json.loads(raw) if isinstance(raw, str) else (raw or [])
         claim["suggested_relation"] = suggest_relation(
             row["cause_type"], row["effect_type"], claim["lag_days"])
         claim["channels"] = [

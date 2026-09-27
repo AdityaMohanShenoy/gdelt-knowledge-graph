@@ -167,6 +167,11 @@ CREATE TABLE IF NOT EXISTS build_versions (
 );
 
 ALTER TABLE events ADD COLUMN IF NOT EXISTS external_id TEXT;
+-- The GDELT source articles behind this event, so an annotator can read the
+-- reporting rather than take a count of outlets on trust. Denormalised on
+-- purpose: these are provenance URLs, not the extracted evidence spans that
+-- `mentions` exists to hold once P2.1 produces them.
+ALTER TABLE events ADD COLUMN IF NOT EXISTS source_urls JSONB NOT NULL DEFAULT '[]'::jsonb;
 -- Plain rather than partial: ON CONFLICT cannot infer a partial index, and
 -- Postgres already allows many NULLs in a unique index.
 CREATE UNIQUE INDEX IF NOT EXISTS events_external_id_idx ON events (external_id);
