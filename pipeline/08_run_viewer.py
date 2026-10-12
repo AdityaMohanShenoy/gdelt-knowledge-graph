@@ -1,14 +1,17 @@
 import argparse
 import asyncio
+import hashlib
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import asyncpg
 from article_fetch import ingest_targeted
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from focal_event_evaluation import evidence_audit, parse_jsonl, validate_annotation_snapshot
 from pydantic import BaseModel
 from url_utils import normalize_url
 
@@ -18,6 +21,9 @@ DEFAULT_DATABASE_URL = os.environ.get(
 )
 EVENTS_PATH = ROOT / "data" / "working" / "india-2024" / "annotation_units.json"
 FRONTEND_PATH = ROOT / "frontend" / "viewer.html"
+REVIEW_PATH = ROOT / "frontend" / "review.html"
+REVIEW_SCRIPT_PATH = ROOT / "frontend" / "review.js"
+REVIEW_ANNOTATIONS_PATH = ROOT / "data" / "evidence" / "focal_events" / "pilot.annotations.jsonl"
 RAW_ARTICLE_DIR = ROOT / "data" / "evidence" / "articles" / "raw"
 
 
@@ -105,14 +111,80 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.pool.close()
 
 
-def create_app(database_url: str = DEFAULT_DATABASE_URL) -> FastAPI:
+def create_app(
+    database_url: str = DEFAULT_DATABASE_URL,
+    review_annotations_path: Path = REVIEW_ANNOTATIONS_PATH,
+    review_results_path: Path | None = None,
+) -> FastAPI:
     app = FastAPI(title="GDELT article viewer", lifespan=lifespan)
     app.state.database_url = database_url
     app.state.targeted_tasks = {}
+    app.state.review_annotations_path = review_annotations_path
+    app.state.review_results_path = review_results_path
 
     @app.get("/")
     async def index() -> FileResponse:
         return FileResponse(FRONTEND_PATH)
+
+    @app.get("/review")
+    async def focal_review() -> FileResponse:
+        return FileResponse(REVIEW_PATH)
+
+    @app.get("/review.js")
+    async def focal_review_script() -> FileResponse:
+        return FileResponse(REVIEW_SCRIPT_PATH, media_type="text/javascript")
+
+    @app.get("/api/focal-review/annotations")
+    async def focal_review_annotations() -> FileResponse:
+        if not app.state.review_annotations_path.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail="No annotation file found. Export annotations with the annotate command.",
+            )
+        return FileResponse(
+            app.state.review_annotations_path,
+            media_type="application/x-ndjson",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/api/focal-review/evidence/{article_id}")
+    async def focal_review_evidence(article_id: str, annotation: dict[str, Any]) -> JSONResponse:
+        path = app.state.review_results_path
+        if path is None or not path.is_file():
+            raise HTTPException(status_code=404, detail="No extraction results file is available.")
+        if annotation.get("article_id") != article_id:
+            raise HTTPException(status_code=400, detail="Article ID does not match the annotation.")
+        try:
+            source = path.read_bytes()
+            records = parse_jsonl(source.decode("utf-8"), path.name)
+            record = next((r for r in records if r["article_id"] == article_id), None)
+            if record is None:
+                raise HTTPException(
+                    status_code=404, detail="No extraction result for this article."
+                )
+            if record.get("schema_version") != "focal-evidence.v1" or record.get(
+                "processing_status"
+            ) not in {"COMPLETE", "ERROR", "EMPTY_TEXT"}:
+                raise ValueError("Unsupported extraction result schema or processing status")
+            audit = evidence_audit(record)
+            if not audit["consistent"]:
+                raise ValueError("Stored extraction evidence failed integrity checks")
+            validate_annotation_snapshot(annotation, record)
+        except (ValueError, KeyError, TypeError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except OSError as error:
+            raise HTTPException(
+                status_code=503, detail="Extraction results could not be read."
+            ) from error
+        return JSONResponse(
+            {
+                "schema_version": "focal-evidence-review.v1",
+                "filename": path.name,
+                "input_sha256": hashlib.sha256(source).hexdigest(),
+                "result": record,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
@@ -182,6 +254,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--database-url", default=DEFAULT_DATABASE_URL)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--review-annotations", type=Path, default=REVIEW_ANNOTATIONS_PATH)
+    parser.add_argument("--review-results", type=Path)
     return parser.parse_args()
 
 
@@ -189,7 +263,15 @@ def main() -> None:
     import uvicorn
 
     args = parse_args()
-    uvicorn.run(create_app(args.database_url), host=args.host, port=args.port)
+    uvicorn.run(
+        create_app(
+            args.database_url,
+            args.review_annotations.resolve(),
+            args.review_results.resolve() if args.review_results else None,
+        ),
+        host=args.host,
+        port=args.port,
+    )
 
 
 if __name__ == "__main__":

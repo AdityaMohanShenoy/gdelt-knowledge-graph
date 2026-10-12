@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Read news articles and select evidence for their focal event.">
+    <title>Focal event review</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --background: #f0f4f7;
+        --surface: #ffffff;
+        --ink: #243443;
+        --muted: #596d7d;
+        --line: #d7e0e7;
+        --accent: #156b67;
+        --selected: #e4f3ee;
+        --warning: #875713;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--background);
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-width: 320px; }
+      button, input, select, textarea { font: inherit; }
+      button { cursor: pointer; }
+      button, .file-button {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 9px 13px;
+        color: var(--ink);
+        background: var(--surface);
+        font-size: 13px;
+        font-weight: 600;
+      }
+      button:hover, .file-button:hover { border-color: var(--accent); }
+      button:disabled { cursor: default; opacity: 0.45; }
+      :focus-visible { outline: 3px solid #38958d; outline-offset: 3px; }
+      .file-button:focus-within { outline: 3px solid #38958d; outline-offset: 3px; }
+      .file-button { position: relative; cursor: pointer; }
+      .file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+      .primary { background: var(--accent); color: white; border-color: var(--accent); }
+      .masthead {
+        display: flex; align-items: center; justify-content: space-between; gap: 20px;
+        padding: 19px 28px; background: var(--surface); border-bottom: 1px solid var(--line);
+      }
+      .brand { display: flex; align-items: center; gap: 13px; }
+      .brand-mark { width: 26px; height: 30px; border-left: 5px solid var(--accent); border-right: 1px solid var(--line); }
+      h1 { font-size: 18px; letter-spacing: -0.4px; margin: 0 0 3px; font-weight: 650; }
+      .subline { font-size: 12px; color: var(--muted); margin: 0; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      .message { padding: 11px 28px; font-size: 13px; background: #e4edf4; border-bottom: 1px solid var(--line); }
+      .message[data-error="true"] { color: #803522; background: #fff0eb; }
+      .workspace { display: grid; grid-template-columns: 240px minmax(350px, 1fr) 310px; min-height: calc(100vh - 80px); }
+      .queue { padding: 24px 17px; border-right: 1px solid var(--line); }
+      .queue-heading { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 9px; }
+      .queue-heading h2 { font-size: 14px; margin: 0; }
+      #progress-label { font-size: 12px; color: var(--muted); }
+      progress { display: block; width: 100%; height: 5px; accent-color: var(--accent); margin-bottom: 19px; }
+      input, select, textarea { width: 100%; padding: 10px; border: 1px solid #b8c7d2; border-radius: 5px; background: white; color: var(--ink); }
+      input, select { font-size: 13px; }
+      #search { margin-bottom: 8px; }
+      #queue-filter { margin-bottom: 15px; }
+      #article-list { display: grid; gap: 3px; max-height: calc(100vh - 250px); overflow: auto; }
+      .queue-item { padding: 12px 10px; text-align: left; background: transparent; border: 0; border-left: 3px solid transparent; border-radius: 0; }
+      .queue-item[aria-current="true"] { background: #ddebe9; border-left-color: var(--accent); }
+      .queue-title { display: block; font-size: 12px; line-height: 1.55; font-weight: 550; }
+      .queue-status { display: block; font-size: 11px; color: var(--muted); margin-top: 6px; }
+      .queue-status[data-status="REVIEWED"] { color: var(--accent); }
+      .queue-status[data-status="UNSUITABLE"] { color: var(--warning); }
+      .reader { padding: 25px clamp(22px, 3vw, 48px) 50px; background: var(--surface); }
+      .reader-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 25px; }
+      #article-position { font-size: 12px; color: var(--muted); }
+      .nav-buttons { display: flex; gap: 7px; }
+      .nav-buttons button { padding: 7px 11px; font-size: 12px; }
+      #article-headline { font-family: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif; font-size: clamp(24px, 2.5vw, 34px); font-weight: 600; line-height: 1.22; letter-spacing: -0.6px; margin: 0 0 14px; overflow-wrap: anywhere; }
+      .article-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); margin-bottom: 23px; }
+      .status-pill { background: #eef2f5; padding: 4px 8px; border-radius: 4px; }
+      .status-pill[data-status="REVIEWED"] { background: var(--selected); color: var(--accent); }
+      .status-pill[data-status="UNSUITABLE"] { background: #faf0df; color: var(--warning); }
+      .reading-hint { font-size: 13px; line-height: 1.6; color: var(--muted); border-left: 2px solid var(--line); padding-left: 12px; margin: 0 0 25px; }
+      #sentence-list { max-width: 76ch; }
+      .paragraph { margin: 0 0 22px; }
+      .sentence { display: grid; grid-template-columns: 25px 1fr; gap: 10px; width: 100%; padding: 9px 9px 9px 5px; margin: 0; text-align: left; border: 0; border-left: 3px solid transparent; border-radius: 0 4px 4px 0; background: transparent; font-weight: normal; }
+      .sentence:hover { background: #f1f6f8; }
+      .sentence[aria-pressed="true"] { background: var(--selected); border-left-color: var(--accent); }
+      .sentence-number { font-size: 11px; font-weight: 600; color: var(--muted); padding-top: 7px; text-align: center; }
+      .sentence[aria-pressed="true"] .sentence-number { color: var(--accent); }
+      .sentence-text { font-family: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif; font-size: 18px; line-height: 1.65; }
+      details { margin-top: 28px; color: var(--muted); font-size: 12px; }
+      summary { cursor: pointer; }
+      #original-text { white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.7 Georgia, serif; color: var(--ink); }
+      .entity-editor { border-top: 1px solid var(--line); padding-top: 20px; color: var(--ink); }
+      .entity-editor > summary { font-size: 14px; font-weight: 650; }
+      .entity-controls { display: flex; align-items: end; gap: 10px; flex-wrap: wrap; }
+      .entity-controls .field { flex: 1; min-width: 130px; margin-bottom: 0; }
+      #entity-selection { overflow-wrap: anywhere; font-size: 13px; line-height: 1.6; }
+      #gold-entities { padding: 0; list-style: none; display: grid; gap: 8px; }
+      .gold-entity { padding: 10px; border: 1px solid var(--line); display: flex; gap: 12px; justify-content: space-between; align-items: start; overflow-wrap: anywhere; }
+      .gold-entity > div { min-width: 0; }
+      .gold-entity button { flex-shrink: 0; }
+      .entity-check { display: flex; align-items: start; gap: 9px; font-size: 12px; line-height: 1.6; margin: 17px 0; }
+      .entity-check input { width: auto; margin-top: 3px; }
+      #ner-error { color: #963c28; font-size: 12px; line-height: 1.6; }
+      .model-inspector { border-top: 1px solid var(--line); padding-top: 20px; color: var(--ink); }
+      .model-inspector > summary { font-size: 14px; font-weight: 650; }
+      .model-note { font-size: 12px; line-height: 1.6; color: var(--muted); }
+      #model-evidence-state { font-size: 13px; line-height: 1.6; }
+      #model-evidence-state[data-error="true"] { color: #963c28; }
+      .model-candidate { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; }
+      .model-candidate h3 { margin: 0 0 8px; font-size: 13px; }
+      .model-candidate-text { font: 17px/1.6 Georgia, serif; overflow-wrap: anywhere; }
+      .model-signals { font-size: 12px; color: var(--muted); line-height: 1.7; }
+      .model-entities { display: grid; gap: 6px; padding: 0; list-style: none; }
+      .model-entity { padding: 9px 12px; background: #f0f4f7; border-left: 3px solid var(--line); overflow-wrap: anywhere; line-height: 1.6; }
+      .model-entity[data-conflict="true"] { background: #faf0df; border-left-color: var(--warning); }
+      .entity-name { font-weight: 650; }
+      .entity-label { display: block; color: var(--muted); }
+      .entity-conflict { display: block; color: var(--warning); font-weight: 600; }
+      #model-evidence-source, #model-provenance { overflow-wrap: anywhere; white-space: pre-wrap; font: 12px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .review-panel { padding: 26px 22px; border-left: 1px solid var(--line); }
+      .panel-inner { position: sticky; top: 24px; }
+      .panel-inner h2 { margin: 0 0 7px; font-size: 17px; letter-spacing: -0.3px; }
+      .panel-intro { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 0 0 24px; }
+      .screening-panel { margin: 0 0 24px; color: var(--ink); }
+      .screening-panel summary { font-size: 13px; font-weight: 650; }
+      .screening-panel[open] summary { margin-bottom: 17px; }
+      #save-screening { width: 100%; }
+      #screening-progress { margin: -8px 0 16px; }
+      .field { display: block; margin-bottom: 17px; }
+      .field-label { display: block; font-size: 12px; font-weight: 650; margin-bottom: 7px; }
+      textarea { resize: vertical; min-height: 75px; font-size: 13px; line-height: 1.6; }
+      #event-summary { min-height: 105px; }
+      .field-help { margin: 6px 0 0; font-size: 11px; color: var(--muted); line-height: 1.5; }
+      .selection { margin-bottom: 20px; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+      #selection-label { margin: 0; font-size: 12px; font-weight: 600; line-height: 1.6; }
+      .two-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      #review-error { color: #963c28; font-size: 12px; line-height: 1.6; margin: 0 0 12px; }
+      #mark-reviewed, #mark-unsuitable { width: 100%; margin-bottom: 9px; }
+      #mark-unsuitable { background: transparent; font-weight: 500; }
+      #save-status { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 7px 0; }
+      #save-status[data-error="true"] { color: #963c28; }
+      .empty { padding: 70px 25px; text-align: center; max-width: 540px; margin: auto; }
+      .empty h2 { font: 28px/1.3 Georgia, serif; }
+      .empty p { color: var(--muted); font-size: 14px; line-height: 1.7; }
+      .empty .file-button { display: inline-block; }
+      [hidden] { display: none !important; }
+      @media (min-width: 1600px) { .workspace { grid-template-columns: 270px minmax(350px, 1fr) 340px; } .reader { padding-left: 70px; padding-right: 70px; } }
+      @media (max-width: 1100px) { .workspace { grid-template-columns: 200px minmax(320px, 1fr) 270px; } .review-panel { padding: 25px 15px; } .reader { padding: 25px 22px; } }
+      @media (max-width: 900px) { .workspace { grid-template-columns: 190px 1fr; } .review-panel { grid-column: 2; border-top: 1px solid var(--line); } .panel-inner { position: static; max-width: 600px; } .queue { grid-row: 1 / 3; } .masthead { padding: 16px 20px; } .brand-mark { display: none; } }
+      @media (max-width: 600px) { .masthead { display: block; padding: 17px; } .actions { margin-top: 15px; } .workspace { display: block; } .queue { padding: 17px; border-right: 0; border-bottom: 1px solid var(--line); } #article-list { max-height: 155px; } .queue-heading { margin-bottom: 5px; } progress { margin-bottom: 12px; } .reader { padding: 24px 15px; } .review-panel { padding: 24px 20px; border-left: 0; } .sentence-text { font-size: 17px; } .message { padding: 11px 17px; } }
+    </style>
+    <script src="review.js" defer></script>
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div><h1>Focal event review</h1><p class="subline">Read the article. Select the sentences that report its main development.</p></div>
+      </div>
+      <div class="actions">
+        <button id="load-pilot" type="button">Load pilot</button>
+        <label class="file-button">Import annotations<input id="import-file" type="file" accept=".jsonl,.ndjson,application/x-ndjson" aria-label="Import annotations"></label>
+        <button id="export-file" class="primary" type="button" disabled>Export annotations</button>
+      </div>
+    </header>
+    <div id="message" class="message" role="status" hidden></div>
+    <main id="workspace" class="workspace" hidden>
+      <aside class="queue" aria-label="Article queue">
+        <div class="queue-heading"><h2>Articles</h2><span id="progress-label"></span></div>
+        <progress id="progress" value="0" max="1" aria-label="Review progress"></progress>
+        <p id="screening-progress" class="field-help"></p>
+        <input id="search" type="search" aria-label="Search articles" placeholder="Find a headline or article ID">
+        <select id="queue-filter" aria-label="Filter articles"><option value="all">All articles</option><option value="UNREVIEWED">To review</option><option value="REVIEWED">Reviewed</option><option value="UNSUITABLE">Excluded</option></select>
+        <nav id="article-list" aria-label="Choose an article"></nav>
+        <p id="no-matches" class="field-help" hidden>No articles match this filter.</p>
+      </aside>
+      <article class="reader">
+        <div class="reader-nav"><span id="article-position"></span><div class="nav-buttons"><button id="previous" type="button" aria-label="Previous article">Previous</button><button id="next" type="button" aria-label="Next article">Next</button></div></div>
+        <h2 id="article-headline"></h2>
+        <div class="article-meta"><span id="article-id"></span><span id="review-status" class="status-pill"></span><span id="sentence-count"></span></div>
+        <p id="screening-summary" class="reading-hint" hidden></p>
+        <p class="reading-hint">Read the full article before choosing evidence. Click a sentence to select it; click again to remove it. Select any sentence that directly supports the primary event.</p>
+        <div id="sentence-list" aria-label="Article sentences"></div>
+        <details id="original-article"><summary>Show original article text</summary><pre id="original-text"></pre></details>
+        <details id="entity-editor" class="entity-editor" hidden>
+          <summary>Annotate entities</summary>
+          <p class="model-note">Select a written name or date in the original article above, choose its label and add it. Annotate every occurrence throughout the article, including background sentences and repeated mentions.</p>
+          <button id="show-entity-source" type="button">Select from original article</button>
+          <p id="entity-selection" role="status">No entity span selected.</p>
+          <div class="entity-controls">
+            <label class="field"><span class="field-label">Entity label</span><select id="entity-label"></select></label>
+            <button id="add-entity" type="button" disabled>Add entity</button>
+          </div>
+          <p id="ner-state" class="model-note" role="status"></p>
+          <ul id="gold-entities" aria-label="Gold entity annotations"></ul>
+          <div class="two-fields">
+            <label class="field"><span class="field-label">Entity reviewer</span><input id="ner-reviewer" type="text" autocomplete="name"></label>
+            <label class="field"><span class="field-label">Entity label source</span><select id="ner-label-source"><option value="human">Human</option><option value="ai_assisted">AI-assisted</option></select></label>
+          </div>
+          <label class="entity-check"><input id="ner-whole-article" type="checkbox"><span>I checked the whole article and annotated all occurrences of the enabled entity categories, or confirmed none are present.</span></label>
+          <p id="ner-error" role="alert" hidden></p>
+          <button id="save-entities" class="primary" type="button">Confirm entity review</button>
+          <p class="model-note">Adding or removing entities returns entity review to draft. Event evidence keeps its separate decision. Draft entities are excluded from NER metrics.</p>
+        </details>
+        <details id="model-inspector" class="model-inspector" hidden>
+          <summary>Inspect model evidence</summary>
+          <p class="model-note">Compare the retrieved sentences with your saved evidence. Scores are ranking signals; entity labels and confidence still need adjudication.</p>
+          <p id="model-evidence-state" role="status"></p>
+          <div id="model-evidence-candidates"></div>
+          <p id="model-evidence-source" class="model-note"></p>
+          <details id="model-provenance-panel" hidden><summary>Model provenance</summary><pre id="model-provenance"></pre></details>
+        </details>
+      </article>
+      <aside class="review-panel" aria-label="Your annotation">
+        <form id="review-form" class="panel-inner" novalidate>
+          <h2>Your annotation</h2>
+          <p class="panel-intro">Describe the main development in your own words, then confirm the supporting evidence.</p>
+          <details id="eligibility-panel" class="screening-panel" open>
+            <summary>Article screening</summary>
+            <p class="field-help">Record relevance and text quality separately from event evidence. Screening alone does not validate the extracted event.</p>
+            <label class="field"><span class="field-label">Protest relevance</span><select id="protest-relevance"><option value="">Choose relevance</option><option value="PROTEST">Protest or strike is the main event</option><option value="PROTEST_LINKED">Development explicitly linked to a protest</option><option value="UNRELATED">Unrelated to protests</option><option value="UNCERTAIN">Uncertain</option></select></label>
+            <label class="field"><span class="field-label">Article body</span><select id="body-quality"><option value="">Choose text quality</option><option value="COMPLETE">Substantive article body</option><option value="LIMITED">Limited preview or partial body</option><option value="INSUFFICIENT">Insufficient text or extraction noise</option></select></label>
+            <label class="field"><span class="field-label">Geographic and temporal scope</span><select id="scope"><option value="">Check scope</option><option value="INDIA_2024">Event in India during 2024</option><option value="OUT_OF_SCOPE">Outside India or 2024</option><option value="UNCERTAIN">Cannot verify from saved evidence</option></select></label>
+            <label class="field"><span class="field-label">Screening reviewer</span><input id="screening-reviewer" type="text" autocomplete="name" placeholder="Who checked article eligibility?"></label>
+            <button id="save-screening" type="button">Save screening</button>
+          </details>
+          <label class="field"><span class="field-label">Primary event</span><textarea id="event-summary" placeholder="What is the main development reported here?"></textarea></label>
+          <div class="selection"><p id="selection-label" aria-live="polite">No evidence selected</p><p class="field-help">Choose evidence from the article on the left.</p></div>
+          <label class="field"><span class="field-label">Article type</span><select id="cohort"><option value="">Choose an article type</option><option value="single_event">Single event</option><option value="multiple_events">Multiple events</option><option value="historical_background">Historical background</option><option value="ongoing_protest">Ongoing protest</option><option value="government_decision">Government decision</option></select></label>
+          <label class="field"><span class="field-label">Reviewer name</span><input id="reviewer" type="text" autocomplete="name" placeholder="Your name"></label>
+          <div class="two-fields">
+            <label class="field"><span class="field-label">Label source</span><select id="label-source"><option value="human">Human</option><option value="ai_assisted">AI-assisted draft</option></select></label>
+            <label class="field"><span class="field-label">Evaluation split</span><select id="split"><option value="pilot">Pilot</option><option value="train">Train</option><option value="dev">Development</option><option value="test">Test</option></select></label>
+          </div>
+          <label class="field"><span class="field-label">Notes or exclusion reason</span><textarea id="notes" placeholder="Ambiguity, background, or problems with the article text"></textarea></label>
+          <label class="field"><span class="field-label">Exclusion category</span><select id="exclusion-reason"><option value="">Choose when excluding</option><option value="UNRELATED">Unrelated to protests</option><option value="INSUFFICIENT_TEXT">Insufficient article text</option><option value="OUT_OF_SCOPE">Wrong geography or time</option><option value="NO_FOCAL_EVENT">No identifiable primary event</option><option value="OTHER">Other — explain in notes</option></select></label>
+          <p class="field-help" id="provenance-help">Check AI-assisted labels against the full article before marking them reviewed.</p>
+          <p id="review-error" role="alert" hidden></p>
+          <button id="mark-reviewed" class="primary" type="submit">Mark reviewed &amp; next</button>
+          <button id="mark-unsuitable" type="button">Exclude article</button>
+          <p class="field-help">Use an exclusion category to distinguish relevance from text quality. Explain ambiguous cases in notes.</p>
+          <p id="save-status" role="status"></p>
+          <p class="field-help">Export a backup when you finish. Use Alt + left or right arrow to navigate.</p>
+        </form>
+      </aside>
+    </main>
+    <section id="empty" class="empty">
+      <h2>Preparing your review batch</h2>
+      <p id="empty-message">Loading the pilot annotations. You can also import an annotation JSONL file using the button above.</p>
+    </section>
+  </body>
+</html>
