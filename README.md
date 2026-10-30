@@ -132,8 +132,10 @@ candidate so coverage spreads across events rather than draining one.
 
 `pipeline/` is one continuous corpus pipeline. `01_build_india_universe`
 through `09_reprocess_articles` build the India 2024 annotation corpus, and
-`10_probe_fetchability` onward follow `docs/BUILD_PLAN.md` — the plan continues
-this numbering with 11, 12, 20, 21, 30, 31 and 40.
+`10_probe_fetchability` onward follow `docs/BUILD_PLAN.md`: `13`–`15` load the
+evidence store and run the causal annotator, `16_extract_focal_events` is the
+focal-event pipeline, and the plan continues with `20` (event mentions), `21`
+(canonicalization) and `40` (graph build).
 
 `pipeline/dashboard/` is a separate, finished lineage: the country filter,
 causal filter, URL validation and Neo4j export that produced
