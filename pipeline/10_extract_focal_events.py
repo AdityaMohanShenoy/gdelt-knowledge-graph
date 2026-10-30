@@ -12,8 +12,10 @@ from urllib.parse import urlsplit
 
 import asyncpg
 from focal_event_evaluation import (
+    SNAPSHOT_KEYS,
     annotation_template,
     assign_splits,
+    blank_labels,
     blind_annotation,
     evaluate,
     read_jsonl,
@@ -320,6 +322,129 @@ def split(args: argparse.Namespace) -> dict:
     } | {"manifest": str(manifest_path), "duplicate_groups": len(groups)}
 
 
+# A frozen record is the article snapshot plus its final labels. Drafts and other
+# working fields (e.g. `ai_proposal`) stay in the input file, whose hash the
+# manifest records.
+FROZEN_KEYS = (*SNAPSHOT_KEYS, *blank_labels(), "model_evidence_inspections")
+SPLITS = ("pilot", "train", "dev", "test")
+
+
+def is_ai_label(reviewer: str | None, label_source: str | None = None) -> bool:
+    return label_source == "ai_assisted" or (reviewer or "").strip().endswith("(AI)")
+
+
+def ai_labelled(gold: dict) -> bool:
+    ner = gold.get("ner_annotation") or {}
+    return (
+        is_ai_label(gold.get("reviewer"), gold.get("label_source"))
+        or is_ai_label((gold.get("eligibility") or {}).get("reviewer"))
+        or (
+            gold.get("gold_entities") is not None
+            and is_ai_label(ner.get("reviewer"), ner.get("label_source"))
+        )
+    )
+
+
+def freeze(args: argparse.Namespace) -> dict:
+    manifest_path = args.output.with_suffix(".manifest.json")
+    if args.output.exists() or manifest_path.exists():
+        raise FileExistsError("Frozen output or manifest already exists")
+    annotations = read_jsonl(args.input)
+    predictions = read_jsonl(args.predictions)
+    assignment = json.loads(args.splits_manifest.read_text())["assignment"]
+    problems = []
+    if set(assignment) != {str(gold["article_id"]) for gold in annotations}:
+        problems.append("annotations and the split assignment cover different articles")
+    for gold in annotations:
+        article = str(gold["article_id"])
+        if assignment.get(article) != gold.get("split"):
+            problems.append(f"{article}: split {gold.get('split')} != {assignment.get(article)}")
+        if gold.get("review_status") not in {"REVIEWED", "UNSUITABLE"}:
+            problems.append(f"{article}: focal event is not reviewed")
+        if (gold.get("eligibility") or {}).get("review_status") != "REVIEWED":
+            problems.append(f"{article}: screening is not reviewed")
+    if problems:
+        raise ValueError("Cannot freeze:\n" + "\n".join(problems[:20]))
+    ai = [gold for gold in annotations if ai_labelled(gold)]
+    if "gold" in args.output.name and ai:
+        raise ValueError(
+            f"{len(ai)} records carry AI labels; a 'gold' dataset must be human-labelled. "
+            "Name it 'weak' or 'ai-assisted' instead."
+        )
+    metrics = evaluate(predictions, annotations)
+    if metrics["evidence_consistency"]["inconsistent_articles"]:
+        raise ValueError("Predictions fail the evidence audit; run `audit` first")
+    write_jsonl(args.output, [{k: g[k] for k in FROZEN_KEYS if k in g} for g in annotations])
+    frozen = read_jsonl(args.output)
+    evaluate(predictions, frozen)  # the frozen file must validate on its own
+
+    def by_split(value) -> dict:
+        return {
+            name: dict(Counter(value(gold) for gold in frozen if gold["split"] == name))
+            for name in SPLITS
+        }
+
+    entities = [e for gold in frozen if gold.get("gold_entities") for e in gold["gold_entities"]]
+    manifest = {
+        "schema_version": "focal-event-freeze.v1",
+        "created_at": datetime.now(UTC).isoformat(),
+        "dataset_kind": "ai-assisted" if ai else "gold",
+        "records_with_ai_labels": len(ai),
+        "inputs": {
+            name: {"path": str(path.resolve()), "sha256": file_hash(path)}
+            for name, path in (
+                ("annotations", args.input),
+                ("predictions", args.predictions),
+                ("splits_manifest", args.splits_manifest),
+            )
+        },
+        "output": str(args.output),
+        "output_sha256": file_hash(args.output),
+        "articles": len(frozen),
+        "review_status_by_split": by_split(lambda gold: gold["review_status"]),
+        "exclusions": dict(
+            Counter(
+                gold["eligibility"]["exclusion_reason"]
+                for gold in frozen
+                if gold["review_status"] == "UNSUITABLE"
+            )
+        ),
+        "provenance": {
+            "event_label_source_by_split": by_split(lambda gold: gold.get("label_source")),
+            "event_reviewers": dict(Counter(gold.get("reviewer") for gold in frozen)),
+            "screening_reviewers": dict(
+                Counter(gold["eligibility"]["reviewer"] for gold in frozen)
+            ),
+        },
+        "entities": {
+            "annotated_articles": sum(gold.get("gold_entities") is not None for gold in frozen),
+            "entities": len(entities),
+            "by_label": dict(Counter(e["label"] for e in entities)),
+        },
+        # Validation only. Top-k and NER scores are Phase 6's, and test is scored once.
+        "validation": {
+            key: metrics[key]
+            for key in (
+                "reviewed_articles",
+                "unsuitable_articles",
+                "unreviewed_articles",
+                "screening_only_articles",
+            )
+        }
+        | {
+            "predictions_consistent": metrics["evidence_consistency"]["consistent_articles"],
+            "frozen_file_revalidated": True,
+        },
+    }
+    with manifest_path.open("x", encoding="utf-8") as handle:
+        json.dump(manifest, handle, ensure_ascii=False, indent=2, allow_nan=False)
+        handle.write("\n")
+    return {
+        key: manifest[key]
+        for key in ("output", "output_sha256", "dataset_kind", "articles", "validation")
+    } | {"manifest": str(manifest_path)}
+
+
 def fraction(value: str) -> float:
     number = float(value)
     if not 0 <= number < 1:
@@ -380,6 +505,11 @@ def parse_args() -> argparse.Namespace:
     splitting.add_argument("--test-fraction", type=fraction, default=0.2)
     splitting.add_argument("--dev-fraction", type=fraction, default=0.2)
     splitting.add_argument("--output", type=Path, required=True)
+    freezing = commands.add_parser("freeze")
+    freezing.add_argument("--input", type=Path, required=True)
+    freezing.add_argument("--predictions", type=Path, required=True)
+    freezing.add_argument("--splits-manifest", type=Path, required=True)
+    freezing.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "screen" and not args.root_code:
         args.root_code = ["14"]
@@ -402,6 +532,8 @@ def main() -> None:
         result = {"output": str(args.output), "articles": len(records)}
     elif args.command == "split":
         result = split(args)
+    elif args.command == "freeze":
+        result = freeze(args)
     elif args.command == "evaluate":
         result = evaluate(read_jsonl(args.input), read_jsonl(args.annotations), args.split)
         if args.output:

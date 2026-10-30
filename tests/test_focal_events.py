@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import copy
+import hashlib
 import importlib.util
 import json
 import os
@@ -944,3 +945,94 @@ def test_local_pretrained_models_end_to_end(monkeypatch):
     assert record["candidate_sentences"][0]["ner_status"] == "COMPLETE"
     assert any(entity["text"] == "Delhi" for entity in record["candidate_sentences"][0]["entities"])
     assert evidence_audit(record)["invalid_spans"] == []
+
+
+def screened(gold, exclusion=None, reviewer="fixture-screener"):
+    gold["eligibility"].update(
+        review_status="REVIEWED",
+        reviewer=reviewer,
+        reviewed_at="2026-10-31T00:00:00Z",
+        protest_relevance="PROTEST",
+        body_quality="INSUFFICIENT" if exclusion == "INSUFFICIENT_TEXT" else "COMPLETE",
+        scope="INDIA_2024",
+        exclusion_reason=exclusion,
+    )
+    return gold
+
+
+def excluded(record):
+    gold = annotation_template(record)
+    gold.update(review_status="UNSUITABLE", reviewer="fixture-reviewer", label_source="human")
+    return screened(gold, exclusion="INSUFFICIENT_TEXT")
+
+
+def test_evaluate_accepts_screening_only_exclusions_and_nothing_else(nlp):
+    records = make_pipeline(nlp).process([article(1), article(2)])
+    annotations = [screened(reviewed(records[0])), excluded(records[1])]
+    metrics = evaluate(records[:1], annotations)  # article 2 never reached the ranker
+    assert metrics["screening_only_articles"] == 1
+    assert (metrics["reviewed_articles"], metrics["unsuitable_articles"]) == (1, 1)
+    assert metrics["article_screening"]["labels"]["exclusion_reason"] == {"INSUFFICIENT_TEXT": 1}
+    kept = screened(reviewed(records[1]))
+    with pytest.raises(ValueError, match="Missing prediction"):
+        evaluate(records[:1], [annotations[0], kept])
+    tampered = copy.deepcopy(annotations[1])
+    tampered["article_text"] += " changed"
+    with pytest.raises(ValueError, match="Missing prediction"):
+        evaluate(records[:1], [annotations[0], tampered])
+
+
+def test_cli_freeze_is_reproducible_strips_drafts_and_guards_the_gold_name(tmp_path, nlp):
+    cli = load_cli()
+    records = make_pipeline(nlp).process([article(1), article(2), article(3)])
+    annotations = [
+        screened(reviewed(records[0])),
+        excluded(records[1]),
+        screened(reviewed(records[2])),
+    ]
+    for gold, name in zip(annotations, ("train", "dev", "test"), strict=True):
+        gold["split"] = name
+    annotations[0]["ai_proposal"] = {"cohort": "ongoing_protest"}
+    predictions, splits = tmp_path / "predictions.jsonl", tmp_path / "splits.manifest.json"
+    cli.write_jsonl(predictions, records[::2])  # article 2 is extraction-rejected
+    assignment = {gold["article_id"]: gold["split"] for gold in annotations}
+    splits.write_text(json.dumps({"assignment": assignment}))
+
+    def freeze(items, output):
+        source = tmp_path / f"{uuid.uuid4().hex}.input.jsonl"
+        cli.write_jsonl(source, items)
+        command = [sys.executable, str(ROOT / "pipeline" / "10_extract_focal_events.py"), "freeze"]
+        command += ["--input", str(source), "--predictions", str(predictions)]
+        command += ["--splits-manifest", str(splits), "--output", str(tmp_path / output)]
+        return subprocess.run(command, text=True, capture_output=True, check=False)
+
+    first, again = freeze(annotations, "a.gold.v1.jsonl"), freeze(annotations, "b.gold.v1.jsonl")
+    assert first.returncode == again.returncode == 0, first.stderr
+    frozen = tmp_path / "a.gold.v1.jsonl"
+    assert frozen.read_bytes() == (tmp_path / "b.gold.v1.jsonl").read_bytes()
+    manifest = json.loads(frozen.with_suffix(".manifest.json").read_text())
+    assert manifest["output_sha256"] == hashlib.sha256(frozen.read_bytes()).hexdigest()
+    assert manifest["dataset_kind"] == "gold"
+    assert manifest["validation"]["screening_only_articles"] == 1
+    assert "top1_accuracy" not in json.dumps(manifest)  # validation only, no scores
+    assert all("ai_proposal" not in json.loads(line) for line in frozen.read_text().splitlines())
+    evaluate(records[::2], read_jsonl(frozen))
+
+    ai = copy.deepcopy(annotations)
+    ai[0].update(reviewer="Claude (AI)", label_source="ai_assisted")
+    refused = freeze(ai, "c.gold.v1.jsonl")
+    assert refused.returncode != 0 and "AI labels" in refused.stderr
+    assert not (tmp_path / "c.gold.v1.jsonl").exists()
+    weak = freeze(ai, "c.weak.v1.jsonl")
+    assert weak.returncode == 0, weak.stderr
+    assert json.loads((tmp_path / "c.weak.v1.manifest.json").read_text())["dataset_kind"] == (
+        "ai-assisted"
+    )
+
+    unreviewed = copy.deepcopy(annotations)
+    unreviewed[2]["review_status"] = "UNREVIEWED"
+    moved = copy.deepcopy(annotations)
+    moved[2]["split"] = "dev"
+    for items, message in ((unreviewed, "not reviewed"), (moved, "split dev != test")):
+        result = freeze(items, "d.weak.v1.jsonl")
+        assert result.returncode != 0 and message in result.stderr

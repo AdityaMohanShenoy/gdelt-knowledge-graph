@@ -394,6 +394,12 @@ The manual entity editor and evaluation gate passed 172 Python tests with no ski
 
 The actual v2 279-article batch also passed the entity-editor check through the local API and Chromium. A software fixture selected one exact span in article `611448`, retained its draft entity state after reload, displayed the model results, and rejected a changed entity offset. Source files remained byte-for-byte unchanged and the editor fit the mobile viewport. The temporary export returned all event decisions to `UNREVIEWED`, kept the entity occurrence in draft with explicit software-fixture provenance, and passed Python snapshot validation with every accuracy metric still unset. These verification fixtures are not research annotations.
 
+Freeze a fully reviewed batch into a versioned dataset with a manifest. It refuses unreviewed records, split mismatches, and a `gold` name while any label is AI:
+
+```bash
+uv run python pipeline/10_extract_focal_events.py freeze --input data/evidence/focal_events/protest-review-300.focal.v1.packet.jsonl --predictions data/evidence/focal_events/protest-review-300.jsonl --splits-manifest data/evidence/focal_events/protest-review-300.splits.packet.manifest.json --output data/evidence/focal_events/protest-review-300.weak.v1.annotations.jsonl
+```
+
 Stored inference results can be audited without model inference or annotations:
 
 ```bash

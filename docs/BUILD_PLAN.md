@@ -281,14 +281,28 @@ dataset `ai-assisted` or `weak` and keep it apart from the test set.
       --annotations data/evidence/focal_events/protest-review-300.gold.v1.annotations.jsonl \
       --output data/evidence/focal_events/protest-review-300.gold.v1.metrics.json
 
-`evaluate` currently rejects the full 300-record packet with `Missing prediction
-for annotated article`, because the 21 extraction-rejected records have no
-prediction. `freeze`, and `evaluate` on the frozen file, must count
-screening-only records in the screening results without requiring a prediction
-for them.
-
 **Accept when.** `freeze` runs twice and produces byte-identical output, the
-manifest hashes verify, and `evaluate` passes on the frozen file.
+manifest hashes verify, and `evaluate` passes on the frozen file. **Done
+2026-10-31:** `protest-review-300.weak.v1.annotations.jsonl` (`dataset_kind:
+ai-assisted`; see `docs/measurements/freeze.md`).
+
+    .venv/bin/python pipeline/10_extract_focal_events.py freeze \
+      --input data/evidence/focal_events/protest-review-300.focal.v1.packet.jsonl \
+      --predictions data/evidence/focal_events/protest-review-300.jsonl \
+      --splits-manifest data/evidence/focal_events/protest-review-300.splits.packet.manifest.json \
+      --output data/evidence/focal_events/protest-review-300.weak.v1.annotations.jsonl
+
+`freeze` refuses:
+- unreviewed screening or focal events
+- a record whose split differs from the split manifest
+- predictions that fail the evidence audit
+- a `gold` name while any label is AI (`ai_assisted`, or a reviewer ending in
+  `(AI)`)
+
+A frozen record keeps only the snapshot and its final labels; drafts such as
+`ai_proposal` stay in the hashed input. `evaluate` now accepts
+extraction-rejected records as screening-only exclusions, and reports them as
+`screening_only_articles`.
 
 ---
 
