@@ -208,12 +208,22 @@ open the model inspector on a test record before its review is saved. This
 mirrors the annotator's hidden machine score: a label that started from the
 system's own proposal cannot measure that system.
 
-**Accept when.** Reviewed records have `REVIEWED`, a non-empty human reviewer, a
+**Decided 2026-10-31: focal-event review is AI.** Claude reviewed all 300
+records under `docs/focal-event-rubric.md`, recorded as `Claude (AI)` /
+`ai_assisted`. The 139 retained articles are `REVIEWED`; the 161 others are
+`UNSUITABLE`. Readers saw neither Codex's drafts nor the model's sentence
+rankings, and test was done by a separate agent. The packet is
+`protest-review-300.focal.v1.packet.jsonl`. Method and results are in
+`docs/measurements/focal_review.md`.
+
+**Accept when.** Reviewed records have `REVIEWED`, a non-empty reviewer, a
 `label_source`, a non-empty `focal_event_summary`, and valid non-empty
 `supporting_sentence_ids`. Excluded records have `UNSUITABLE`, a reviewer, and
 an `eligibility.exclusion_reason`. Every article text, hash, headline, sentence
 boundary and offset is unchanged; `10_extract_focal_events.py audit` and the
-snapshot validation in `evaluate` both pass.
+snapshot validation in `evaluate` both pass. All of this holds (2026-10-31).
+Every label is AI, so Phase 6 metrics measure agreement with an independent AI
+reading, not human accuracy.
 
 ---
 
@@ -642,7 +652,7 @@ Not scheduled. Revisit after Phase 12:
 | Decision | Needed by | Note |
 |---|---|---|
 | Where the review packet is shared | P0.1 | Must preserve bytes; hashes are checked |
-| Can unchanged AI drafts enter gold? | Phase 4 | Decided for screening (2026-10-31): all 300 screening labels are AI, `Claude (AI)`, test included. Still open for focal events and entities, where a human-reviewed test set is the remaining way to report accuracy against people |
+| Can unchanged AI drafts enter gold? | Phase 4 | Decided for screening (2026-10-31): all 300 screening labels are AI, `Claude (AI)`, test included. Focal events decided the same day: also AI, test included. Still open for entities (Phase 3). A human-reviewed test subset remains the only way to report accuracy against people |
 | `demo` as a split or a separate list | P5.1 | `evaluate` rejects unknown split values |
 | Local Postgres vs Supabase | Phase 12 | Handoff says stabilize locally first; the annotator already deploys against a Supabase `evidence` schema |
 | Seven relation types or fewer | Phase 10 | Decide from measured agreement |
