@@ -429,8 +429,23 @@ def entity_key(entity: dict) -> tuple:
     return entity["label"], entity["start_char"], entity["end_char"]
 
 
-def ratio(numerator: int, denominator: int) -> float | None:
+def ratio(numerator: float, denominator: int) -> float | None:
     return numerator / denominator if denominator else None
+
+
+def chance_hits(support_size: int, sentence_count: int) -> tuple[float, float]:
+    """Expected Top-1 and Top-3 hits for a uniformly random sentence ranking.
+
+    A larger gold support set makes Top-k easier to hit by luck, so every Top-k
+    score is reported beside this floor."""
+    if not sentence_count:
+        return 0.0, 0.0
+    misses3 = (
+        math.comb(sentence_count - support_size, 3) / math.comb(sentence_count, 3)
+        if sentence_count >= 3
+        else 0.0
+    )
+    return support_size / sentence_count, 1 - misses3
 
 
 def validate_annotation_snapshot(gold: dict, record: dict) -> None:
@@ -543,6 +558,7 @@ def evaluate(records: list[dict], annotations: list[dict], split: str | None = N
     if len({gold["article_id"] for gold in annotations}) != len(annotations):
         raise ValueError("Duplicate annotation article IDs")
     counts: Counter[str] = Counter()
+    chance = dict.fromkeys(("top1", "top3", "support_sentences", "support_share"), 0.0)
     cohorts: dict[str, Counter] = {}
     screening_counts: dict[str, Counter] = {field: Counter() for field in ELIGIBILITY_LABELS}
     misses = []
@@ -626,6 +642,11 @@ def evaluate(records: list[dict], annotations: list[dict], split: str | None = N
         )
         counts["top1_hits"] += top1
         counts["top3_hits"] += top3
+        chance1, chance3 = chance_hits(len(support), len(record["sentences"]))
+        chance["top1"] += chance1
+        chance["top3"] += chance3
+        chance["support_sentences"] += len(support)
+        chance["support_share"] += len(support) / len(record["sentences"])
         if is_protest_benchmark_article(gold):
             counts["protest_benchmark_reviewed"] += 1
             counts["protest_benchmark_top1_hits"] += top1
@@ -687,6 +708,11 @@ def evaluate(records: list[dict], annotations: list[dict], split: str | None = N
         },
         "top1_accuracy": ratio(counts["top1_hits"], counts["reviewed"]),
         "top3_recall": ratio(counts["top3_hits"], counts["reviewed"]),
+        # Read Top-k against these: the bigger the gold support, the easier a hit.
+        "gold_support": {
+            "mean_sentences": ratio(chance["support_sentences"], counts["reviewed"]),
+            "mean_share_of_article": ratio(chance["support_share"], counts["reviewed"]),
+        },
         "protest_benchmark": {
             "reviewed_articles": counts["protest_benchmark_reviewed"],
             "top1_accuracy": ratio(
@@ -707,6 +733,13 @@ def evaluate(records: list[dict], annotations: list[dict], split: str | None = N
                 "top3_recall": ratio(counts[f"{name}_top3_hits"], counts[f"{name}_articles"]),
             }
             for name in ("position", "headline")
+        }
+        | {
+            "random": {
+                "articles": counts["reviewed"],
+                "top1_accuracy": ratio(chance["top1"], counts["reviewed"]),
+                "top3_recall": ratio(chance["top3"], counts["reviewed"]),
+            }
         },
         "ner": {
             "annotated_articles": counts["ner_annotated_articles"],
