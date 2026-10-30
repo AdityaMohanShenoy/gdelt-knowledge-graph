@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import hashlib
 import os
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -95,11 +96,17 @@ def start_targeted_worker(app: FastAPI, url_key: str) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    app.state.pool = await asyncpg.create_pool(
-        app.state.database_url,
-        min_size=1,
-        max_size=5,
-    )
+    # Annotation review reads only local JSONL, so a missing database must not
+    # stop it. Routes that do need Postgres answer 503 through require_pool.
+    try:
+        app.state.pool = await asyncpg.create_pool(
+            app.state.database_url,
+            min_size=1,
+            max_size=5,
+        )
+    except (OSError, asyncpg.PostgresError) as error:
+        print(f"Postgres unavailable, serving annotation review only: {error}", file=sys.stderr)
+        app.state.pool = None
     try:
         yield
     finally:
@@ -108,7 +115,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-        await app.state.pool.close()
+        if app.state.pool is not None:
+            await app.state.pool.close()
+
+
+def require_pool(app: FastAPI) -> asyncpg.Pool:
+    if app.state.pool is None:
+        raise HTTPException(status_code=503, detail="Article database is unavailable")
+    return app.state.pool
 
 
 def create_app(
@@ -188,7 +202,7 @@ def create_app(
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
-        await app.state.pool.fetchval("SELECT 1")
+        await require_pool(app).fetchval("SELECT 1")
         return {"status": "ok"}
 
     @app.get("/data/working/india-2024/annotation_units.json")
@@ -202,7 +216,7 @@ def create_app(
         url_key = normalize_url(url)
         if not url_key:
             raise HTTPException(status_code=400, detail="URL must be an HTTP or HTTPS URL")
-        row = await article_row(app.state.pool, url_key)
+        row = await article_row(require_pool(app), url_key)
         if row is None:
             return {
                 "found": False,
@@ -216,7 +230,8 @@ def create_app(
         url_key = normalize_url(request.url)
         if not url_key:
             raise HTTPException(status_code=400, detail="URL must be an HTTP or HTTPS URL")
-        await app.state.pool.execute(
+        pool = require_pool(app)
+        await pool.execute(
             """
             INSERT INTO article_documents (url_key, source_url)
             VALUES ($1, $2)
@@ -225,7 +240,7 @@ def create_app(
             url_key,
             request.url.strip(),
         )
-        await app.state.pool.execute(
+        await pool.execute(
             """
             UPDATE article_documents
             SET status = 'pending',
@@ -236,7 +251,7 @@ def create_app(
             """,
             url_key,
         )
-        row = await article_row(app.state.pool, url_key)
+        row = await article_row(pool, url_key)
         if row is None:
             raise HTTPException(status_code=500, detail="Article queue row was not created")
         if row["status"] in {"pending", "retryable_error", "fetching"}:
