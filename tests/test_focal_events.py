@@ -37,7 +37,7 @@ segment_articles = extraction.segment_articles
 
 def load_cli():
     spec = importlib.util.spec_from_file_location(
-        "extract_focal_events", ROOT / "pipeline" / "16_extract_focal_events.py"
+        "extract_focal_events", ROOT / "pipeline" / "10_extract_focal_events.py"
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -661,7 +661,7 @@ def test_cli_audit_persists_corruption_report_and_fails_without_mutating_input(t
     record = make_pipeline(nlp).process([article()])[0]
     path, report = tmp_path / "results.jsonl", tmp_path / "audit.json"
     cli.write_jsonl(path, [record])
-    command = [sys.executable, str(ROOT / "pipeline" / "16_extract_focal_events.py")]
+    command = [sys.executable, str(ROOT / "pipeline" / "10_extract_focal_events.py")]
     result = subprocess.run(
         command + ["audit", "--input", str(path), "--output", str(report)],
         text=True,
@@ -717,7 +717,7 @@ def test_cli_evaluation_saves_invalid_candidate_report_and_fails(tmp_path, nlp):
     result = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "pipeline" / "16_extract_focal_events.py"),
+            str(ROOT / "pipeline" / "10_extract_focal_events.py"),
             "evaluate",
             "--input",
             str(input_path),
@@ -755,7 +755,7 @@ def test_cli_annotation_and_evaluation_roundtrip_without_inference(tmp_path, nlp
     record = make_pipeline(nlp).process([article()])[0]
     input_path, gold_path = tmp_path / "results.jsonl", tmp_path / "gold.jsonl"
     cli.write_jsonl(input_path, [record])
-    command = [sys.executable, str(ROOT / "pipeline" / "16_extract_focal_events.py")]
+    command = [sys.executable, str(ROOT / "pipeline" / "10_extract_focal_events.py")]
     subprocess.run(
         command + ["annotate", "--input", str(input_path), "--output", str(gold_path)],
         check=True,

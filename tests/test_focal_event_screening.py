@@ -29,7 +29,7 @@ segment_articles = importlib.import_module("focal_events").segment_articles
 
 def load_cli():
     spec = importlib.util.spec_from_file_location(
-        "screen_focal_events", ROOT / "pipeline" / "16_extract_focal_events.py"
+        "screen_focal_events", ROOT / "pipeline" / "10_extract_focal_events.py"
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

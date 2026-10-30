@@ -11,7 +11,7 @@ to an exact text span in a GDELT-backed article.
 
 > **ML retrieves and proposes; evidence and human review decide.**
 
-This plan follows the focal-event work in `pipeline/16_extract_focal_events.py`
+This plan follows the focal-event work in `pipeline/10_extract_focal_events.py`
 and its review frontend (PR #8), and the project handoff of 2026-10-30. It
 supersedes the plan of 2026-09-17. Work that plan already delivered is kept and
 mapped onto the phases below. Read `CLAUDE.md` first; its invariants bind
@@ -192,7 +192,7 @@ measure that system.
 `label_source`, a non-empty `focal_event_summary`, and valid non-empty
 `supporting_sentence_ids`. Excluded records have `UNSUITABLE`, a reviewer, and
 an `eligibility.exclusion_reason`. Every article text, hash, headline, sentence
-boundary and offset is unchanged; `16_extract_focal_events.py audit` and the
+boundary and offset is unchanged; `10_extract_focal_events.py audit` and the
 snapshot validation in `evaluate` both pass.
 
 ---
@@ -230,7 +230,7 @@ reviewer. Inter-reviewer agreement is reported.
 
 ### P4.1 — `freeze` command
 
-**Build.** Add a `freeze` subcommand to `16_extract_focal_events.py`. Today there
+**Build.** Add a `freeze` subcommand to `10_extract_focal_events.py`. Today there
 are `prepare-models`, `screen`, `extract`, `annotate`, `evaluate` and `audit`,
 and nothing writes the manifest.
 
@@ -246,7 +246,7 @@ The command refuses to write a file named `gold` if any record's reviewer is
 `Codex (AI)`. If labels were accepted from AI without human inspection, name the
 dataset `ai-assisted` or `weak` and keep it apart from the test set.
 
-    .venv/bin/python pipeline/16_extract_focal_events.py evaluate \
+    .venv/bin/python pipeline/10_extract_focal_events.py evaluate \
       --input data/evidence/focal_events/protest-review-300.jsonl \
       --annotations data/evidence/focal_events/protest-review-300.gold.v1.annotations.jsonl \
       --output data/evidence/focal_events/protest-review-300.gold.v1.metrics.json
@@ -602,7 +602,6 @@ Not scheduled. Revisit after Phase 12:
 | Decision | Needed by | Note |
 |---|---|---|
 | Where the review packet is shared | P0.1 | Must preserve bytes; hashes are checked |
-| Script name: `16_extract_focal_events.py` or `10_` | now | The handoff's commands use `10_`, the branch uses `16_` (10 was `probe_fetchability`) |
 | Can unchanged AI drafts enter gold? | Phase 4 | Recommended: yes for train/dev with `ai_assisted` provenance; never for test |
 | `demo` as a split or a separate list | P5.1 | `evaluate` rejects unknown split values |
 | Local Postgres vs Supabase | Phase 12 | Handoff says stabilize locally first; the annotator already deploys against a Supabase `evidence` schema |

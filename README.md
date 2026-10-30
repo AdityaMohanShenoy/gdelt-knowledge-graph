@@ -132,10 +132,10 @@ candidate so coverage spreads across events rather than draining one.
 
 `pipeline/` is one continuous corpus pipeline. `01_build_india_universe`
 through `09_reprocess_articles` build the India 2024 annotation corpus, and
-`10_probe_fetchability` onward follow `docs/BUILD_PLAN.md`: `13`–`15` load the
-evidence store and run the causal annotator, `16_extract_focal_events` is the
-focal-event pipeline, and the plan continues with `20` (event mentions), `21`
-(canonicalization) and `40` (graph build).
+`10_extract_focal_events` onward follow `docs/BUILD_PLAN.md`: `10` is the
+focal-event pipeline, `11_probe_fetchability` measured fetchability, `13`–`15`
+load the evidence store and run the causal annotator, and the plan continues with
+`20` (event mentions), `21` (canonicalization) and `40` (graph build).
 
 `pipeline/dashboard/` is a separate, finished lineage: the country filter,
 causal filter, URL validation and Neo4j export that produced
@@ -256,9 +256,9 @@ This POC treats one stored article as one primary-event hypothesis. It retrieves
 Install with `uv sync --group pipeline --group ml`, then download the pretrained checkpoints once:
 
 ```bash
-uv run python pipeline/16_extract_focal_events.py prepare-models
-uv run python pipeline/16_extract_focal_events.py extract --limit 40 --output data/evidence/focal_events/pilot.jsonl
-uv run python pipeline/16_extract_focal_events.py annotate --input data/evidence/focal_events/pilot.jsonl --output data/evidence/focal_events/pilot.annotations.jsonl
+uv run python pipeline/10_extract_focal_events.py prepare-models
+uv run python pipeline/10_extract_focal_events.py extract --limit 40 --output data/evidence/focal_events/pilot.jsonl
+uv run python pipeline/10_extract_focal_events.py annotate --input data/evidence/focal_events/pilot.jsonl --output data/evidence/focal_events/pilot.annotations.jsonl
 ```
 
 The defaults are `en_core_web_sm` 3.8.0, `sentence-transformers/all-mpnet-base-v2`, and `fastino/gliner2-base-v1`, on CPU. Model preparation downloads public checkpoints from Hugging Face and records their resolved commit revisions in `data/evidence/focal_events/models.json`. Subsequent extraction loads these exact local snapshots with Hugging Face and Transformers offline mode enabled. No external inference API or generative model is used. `--embedding-model`, `--embedding-revision`, `--ner-model`, `--ner-revision`, and `--model-manifest` allow separate pinned experiments; model manifests are never overwritten. The spaCy parser wheel is locked with the Python dependencies. Inference uses evaluation mode, seed zero, and deterministic PyTorch algorithms. Cross-platform bit-for-bit reproducibility is not guaranteed.
@@ -290,9 +290,9 @@ spaCy parses paragraphs in batches; embeddings batch headlines and sentences acr
 For a protest-focused batch, screen the existing store before inference:
 
 ```bash
-uv run python pipeline/16_extract_focal_events.py screen --limit 50 --output data/evidence/focal_events/protest-pilot.screening.jsonl
-uv run python pipeline/16_extract_focal_events.py extract --screened-input data/evidence/focal_events/protest-pilot.screening.jsonl --output data/evidence/focal_events/protest-pilot.jsonl
-uv run python pipeline/16_extract_focal_events.py annotate --input data/evidence/focal_events/protest-pilot.jsonl --output data/evidence/focal_events/protest-pilot.annotations.jsonl
+uv run python pipeline/10_extract_focal_events.py screen --limit 50 --output data/evidence/focal_events/protest-pilot.screening.jsonl
+uv run python pipeline/10_extract_focal_events.py extract --screened-input data/evidence/focal_events/protest-pilot.screening.jsonl --output data/evidence/focal_events/protest-pilot.jsonl
+uv run python pipeline/10_extract_focal_events.py annotate --input data/evidence/focal_events/protest-pilot.jsonl --output data/evidence/focal_events/protest-pilot.annotations.jsonl
 ```
 
 Screening reads `target_events.parquet`, defaults to CAMEO root `14`, and requires an India action location and a GDELT `day` in 2024. It normalizes source URLs with the existing queue rules and deterministically samples matching `extracted` database rows. Repeat `--root-code` to include `18`, `19` or `20` for a separately identified broader unrest experiment. `--events-input`, `--seed`, and `--database-url` select another stored snapshot or reproducible sample. GDELT codes and dates are candidate metadata, not verification of an article's primary event, publication date or protest relevance.
@@ -308,9 +308,9 @@ The expanded `protest-review-300.screening.jsonl` screens 300 root-14 candidates
 Among the retained articles, word-count quantiles are approximately 134 at the 10th percentile, 206 at the 20th percentile and 363 at the median, using linear interpolation. Removing articles below those percentiles would discard 28 or 56 retained cases respectively, including five short cases already flagged for inspection. The saved 77-word article `559943` contains a protest action, organization, location and publication line, demonstrating why short text merits inspection. Word counts alone do not establish whether focal-event evidence is sufficient. All retained text remains available for review, and the rejected snapshots remain available for extraction debugging. Reproduce the expanded batch with fresh output filenames:
 
 ```bash
-uv run python pipeline/16_extract_focal_events.py screen --limit 300 --seed protest-screening-v1 --output data/evidence/focal_events/protest-review-300.screening.jsonl
-uv run python pipeline/16_extract_focal_events.py extract --screened-input data/evidence/focal_events/protest-review-300.screening.jsonl --output data/evidence/focal_events/protest-review-300.jsonl
-uv run python pipeline/16_extract_focal_events.py annotate --input data/evidence/focal_events/protest-review-300.jsonl --output data/evidence/focal_events/protest-review-300.annotations.jsonl
+uv run python pipeline/10_extract_focal_events.py screen --limit 300 --seed protest-screening-v1 --output data/evidence/focal_events/protest-review-300.screening.jsonl
+uv run python pipeline/10_extract_focal_events.py extract --screened-input data/evidence/focal_events/protest-review-300.screening.jsonl --output data/evidence/focal_events/protest-review-300.jsonl
+uv run python pipeline/10_extract_focal_events.py annotate --input data/evidence/focal_events/protest-review-300.jsonl --output data/evidence/focal_events/protest-review-300.annotations.jsonl
 ```
 
 Local inference completed for all 279 retained articles, preserving 6,518 sentences, 837 candidates and 3,647 entity predictions. No sentence or headline embeddings were truncated. The saved audit validates all 14,146 spans and finds no inconsistent records. All 279 annotation templates retain `UNREVIEWED` event and eligibility statuses, and ranking/NER accuracy remains null in `protest-review-300.metrics.json`. Source evidence, candidate rank order and entity spans/labels match all 58 overlapping pilot records. Fifty-six records are identical apart from processing timestamps; changing the final two articles' batch composition produces numerical differences up to approximately `3.3e-7` in ranking scores and `2.8e-6` in entity confidence, without changing their extracted spans or rankings. Pinning model revisions and batch configuration does not imply identical floating-point scores across different batch compositions.
@@ -377,7 +377,7 @@ Entity review has its own reviewer, provenance and whole-article confirmation. *
 **Export annotations** downloads the complete annotation JSONL, including unfinished event and entity drafts. It preserves article IDs, hashes, headlines, full text and every sentence's original offsets. Existing gold entities remain unchanged unless explicitly edited. Browser drafts use `focal-review-drafts.v2` and a batch-specific v2 storage key; existing v1 event/screening/inspection drafts migrate without applying entity or source mutations, and the old cache remains available. Imported snapshots are checked against their SHA-256 and Python character offsets, including Unicode characters outside the basic multilingual plane. Article text is rendered as text, rather than HTML. Copy the downloaded file into the local evidence directory, then evaluate it using a new output filename:
 
 ```bash
-uv run python pipeline/16_extract_focal_events.py evaluate --input data/evidence/focal_events/pilot.jsonl --annotations data/evidence/focal_events/pilot.reviewed.annotations.jsonl --output data/evidence/focal_events/pilot.reviewed.metrics.json
+uv run python pipeline/10_extract_focal_events.py evaluate --input data/evidence/focal_events/pilot.jsonl --annotations data/evidence/focal_events/pilot.reviewed.annotations.jsonl --output data/evidence/focal_events/pilot.reviewed.metrics.json
 ```
 
 Frontend validation is in `tests/test_review_frontend.py`: pure JavaScript import/export and draft validation, manual entity editing, inspection-history/conflicting-label checks, local API integration, and real Chromium review/export/recovery flows whose exports are evaluated by the Python scorer. Coverage includes Unicode selections, entity drafts excluded from NER metrics, whole-article confirmation, separate event/entity provenance and v1 cache migration. It checks that model results stay hidden during draft annotation, that inspection preserves gold evidence, and that changed or inconsistent snapshots cannot be displayed through the API. It uses the installed workspace Playwright dependency. Install its browser once with `node node_modules/playwright/cli.js install chromium --no-shell`, then run `uv run pytest tests/test_review_frontend.py -q`. A custom `PLAYWRIGHT_BROWSERS_PATH` can point to temporary browser installations. Missing Playwright dependencies are reported as skipped browser coverage; missing Chromium causes the browser test to fail rather than pretend to pass.
@@ -397,7 +397,7 @@ The actual v2 279-article batch also passed the entity-editor check through the 
 Stored inference results can be audited without model inference or annotations:
 
 ```bash
-uv run python pipeline/16_extract_focal_events.py audit --input data/evidence/focal_events/protest-pilot.v2.jsonl --output data/evidence/focal_events/protest-pilot.v2.audit.json
+uv run python pipeline/10_extract_focal_events.py audit --input data/evidence/focal_events/protest-pilot.v2.jsonl --output data/evidence/focal_events/protest-pilot.v2.audit.json
 ```
 
 The audit records the input file hash and checks exact spans, article-text hashes, paragraph containment, full-text coverage, unique sentence/candidate IDs, source order, candidate references and entity labels, confidence ranges and sentence-relative offsets. Candidate objects must agree with their original sentence records; literal substring presence alone does not establish a valid reference. `evidence_consistency` identifies every inconsistent article with span details and structural reasons. `audit` and `evaluate` save their report and exit with status 2 when inconsistencies are found; malformed inputs fail before a report is produced. Extraction also exits with status 2 for an inconsistent evidence result. Existing output files are never overwritten. Empty audit batches fail, while stored empty-text articles remain explicit processing outcomes.
@@ -422,7 +422,7 @@ Annotation export includes the headline, full article, and numbered sentences wi
 Measure extraction quality after labels are reviewed:
 
 ```bash
-uv run python pipeline/16_extract_focal_events.py evaluate --input data/evidence/focal_events/pilot.jsonl --annotations data/evidence/focal_events/pilot.annotations.jsonl --output data/evidence/focal_events/pilot.reviewed.metrics.json
+uv run python pipeline/10_extract_focal_events.py evaluate --input data/evidence/focal_events/pilot.jsonl --annotations data/evidence/focal_events/pilot.annotations.jsonl --output data/evidence/focal_events/pilot.reviewed.metrics.json
 ```
 
 Use `--split test` for held-out metrics. Evaluation reports Top-1 accuracy, Top-3 recall, exact-offset-and-label NER precision, full-article NER recall, candidate-only NER recall, evidence-span validity, cohort Top-3 recall, processing counts, and missed focal-event article IDs. Full-article NER recall includes retrieval losses; candidate-only recall isolates NER performance. Headline-only baselines exclude missing headlines and expose their denominator. Reviewed ranking/NER failures remain in the focal-evidence denominator. Missing predictions, duplicate article IDs, unsupported labels, changed text snapshots, and changed sentence segmentation are rejected. Undefined metrics return null, including when no labels have been reviewed; producing candidates alone does not establish quality. Evidence validity audits all saved paragraphs, sentences, candidate sentences, and entity offsets, including unreviewed records.
@@ -441,7 +441,7 @@ The pass proposes exclusion of navigation-only and title-only extracts, a redire
 
 Entity spans cover the complete saved text, including repeated mentions, background, bylines and extraction noise; excluded records retain entity annotations but are not proposed focal-event evaluation cases. Use non-overlapping written names with exact Python character offsets: named people (including fictional people in the entertainment extract), institutions/parties/companies/publishers/platforms, places and calendar references. A complete institution name takes precedence over an embedded location; separately written acronyms are separate occurrences. Generic roles, family references, laws, schemes and product titles are excluded. Calendar and financial years and relative calendar references remain as written; durations, clock times and legislation identifiers are not dates. Fused bylines and datelines are annotated without editing the original text. The batch passed snapshot/hash checks, sentence and entity span checks, and the frontend's Unicode verification and lossless import/export roundtrip. Focal-event and NER accuracy remain unscored until the labels are human-verified.
 
-Run `uv run pytest tests/test_focal_events.py -q` for unit, CLI, database, and pretrained-model checks. The database integration is skipped when local Postgres cannot be reached; the model integration is skipped until checkpoints have been prepared. These skips are not passing integrations. Set `FOCAL_EVENT_MODEL_MANIFEST` to test an alternate local manifest. The broader Python suite is `uv run pytest -q`; linting uses `uv run ruff check pipeline tests`. The POC was also type-checked on the installed Python 3.13 environment using `uv run mypy --python-version 3.13 pipeline/focal_events.py pipeline/focal_event_evaluation.py pipeline/16_extract_focal_events.py tests/test_focal_events.py`. The repository's default Python 3.11 mypy target cannot parse the installed NumPy stubs that use Python 3.12 type statements; the explicit interpreter-version check does not change that default configuration.
+Run `uv run pytest tests/test_focal_events.py -q` for unit, CLI, database, and pretrained-model checks. The database integration is skipped when local Postgres cannot be reached; the model integration is skipped until checkpoints have been prepared. These skips are not passing integrations. Set `FOCAL_EVENT_MODEL_MANIFEST` to test an alternate local manifest. The broader Python suite is `uv run pytest -q`; linting uses `uv run ruff check pipeline tests`. The POC was also type-checked on the installed Python 3.13 environment using `uv run mypy --python-version 3.13 pipeline/focal_events.py pipeline/focal_event_evaluation.py pipeline/10_extract_focal_events.py tests/test_focal_events.py`. The repository's default Python 3.11 mypy target cannot parse the installed NumPy stubs that use Python 3.12 type statements; the explicit interpreter-version check does not change that default configuration.
 
 ## Open the target event viewer
 

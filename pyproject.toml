@@ -30,7 +30,7 @@ pipeline = [
     "pydantic>=2.9.0",
     "trafilatura>=2.0.0",
 ]
-# Focal-event POC (pipeline/16_extract_focal_events.py): CPU torch, spaCy,
+# Focal-event POC (pipeline/10_extract_focal_events.py): CPU torch, spaCy,
 # Sentence Transformers and GLiNER2. Kept out of `pipeline` so fetching and
 # loading the store do not pull in a multi-GB model stack.
 ml = [
