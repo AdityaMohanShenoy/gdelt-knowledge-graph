@@ -376,6 +376,17 @@ over that floor.
 with input hashes and the error analysis. Test-set numbers are reported once,
 separately, and are not used for any later tuning.
 
+**Dev baseline done 2026-10-31** (`docs/measurements/focal_baseline.md`; test
+not scored):
+- **Dev Top-1 is 0.96, but the model is level with headline similarity.**
+  Pooled over non-test it is 0.85 vs 0.85.
+- **The metric is near saturation.** Gold support is 54% of each article, so
+  random ranking already gets Top-1 0.54.
+- **Most misses are a labelling artifact.** 11 of the 18 Top-1 misses are
+  headline echoes, which the rubric excludes from support.
+- **Open before tuning:** the headline-echo policy, and a one-per-article
+  *core sentence* label as a harder target.
+
 ---
 
 ## Phase 7 — Atomic event mentions
