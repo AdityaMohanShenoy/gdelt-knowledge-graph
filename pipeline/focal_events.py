@@ -32,6 +32,9 @@ class RankingConfig(BaseModel):
     ner_threshold: float = Field(default=0.5, ge=0, le=1)
     batch_size: int = Field(default=8, gt=0)
     include_event_entities: bool = False
+    # Off by default so earlier runs stay reproducible from their saved config.
+    drop_headline_echoes: bool = False
+    headline_echo_overlap: float = Field(default=0.8, gt=0, le=1)
 
     @model_validator(mode="after")
     def validate_weights(self) -> "RankingConfig":
@@ -154,6 +157,19 @@ def segment_articles(articles: list[dict[str, Any]], nlp: Any, batch_size: int) 
     return records
 
 
+def content_words(text: str | None) -> set[str]:
+    return {word for word in re.findall(r"[a-z0-9]+", (text or "").lower()) if len(word) > 2}
+
+
+def is_headline_echo(text: str, headline: str | None, overlap: float) -> bool:
+    """True when at least `overlap` of a sentence's content words are headline words.
+
+    Lexical rather than embedding similarity on purpose: on dev, a cosine cut-off
+    also caught genuine lead sentences that paraphrase the headline."""
+    words = content_words(text)
+    return len(words) >= 3 and len(words & content_words(headline)) / len(words) >= overlap
+
+
 def rank_sentences(record: dict, similarities: list[float], config: RankingConfig) -> None:
     has_headline = bool((record["headline"] or "").strip())
     denominator = config.position_weight + config.event_weight
@@ -174,7 +190,15 @@ def rank_sentences(record: dict, similarities: list[float], config: RankingConfi
             + config.position_weight * sentence["position_score"]
             + config.event_weight * sentence["event_relevance"]
         ) / denominator
-    ranked = sorted(record["sentences"], key=lambda s: (-s["importance_score"], s["sentence_id"]))
+        sentence["headline_echo"] = config.drop_headline_echoes and is_headline_echo(
+            sentence["text"], record["headline"], config.headline_echo_overlap
+        )
+    # A body sentence that restates the headline adds no evidence beyond it, so
+    # echoes rank after every other sentence rather than leading the evidence.
+    ranked = sorted(
+        record["sentences"],
+        key=lambda s: (s["headline_echo"], -s["importance_score"], s["sentence_id"]),
+    )
     for rank, sentence in enumerate(ranked, 1):
         sentence["rank"] = rank
     record["candidate_sentences"] = ranked[:3]

@@ -267,7 +267,7 @@ Extraction reads the existing `article_documents` table without changing it. The
 
 The JSONL retains the complete unchanged cleaned article, its SHA-256, source metadata, every paragraph and sentence in article order, all ranking scores, and the top three candidates in rank order. A separate list retains candidate sentence IDs in article order. Paragraphs follow nonempty lines in the stored cleaned text. IDs are one-based; offsets are zero-based, end-exclusive Python character indices into the saved cleaned article, rather than HTML bytes. Entity offsets are stored relative to both the article and its sentence, with confidence and sentence ID. Repeated entity text is distinguished by offsets. Models, package versions, schema, configuration, and processing errors are retained. The adjacent `.manifest.json` captures article IDs, text hashes, model provenance, counts, and a span audit. The database does not currently store publication timestamps, so `publication_timestamp` remains null; `fetched_at` is retained separately.
 
-An optional `--config path/to/config.json` accepts this configuration:
+The current ranker is v2: pass `--config pipeline/focal_ranking.v2.json`, which sets `"drop_headline_echoes": true` and `"headline_echo_overlap": 0.8` to rank sentences that restate the headline last (see `docs/measurements/focal_baseline.md`). Both default off, so earlier runs reproduce from their saved config. An optional `--config path/to/config.json` accepts this configuration:
 
 ```json
 {
