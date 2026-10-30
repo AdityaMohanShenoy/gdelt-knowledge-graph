@@ -584,10 +584,19 @@ def evaluate(records: list[dict], annotations: list[dict], split: str | None = N
             raise ValueError("Unknown annotation evaluation split")
         if split is not None and gold.get("split") != split:
             continue
-        if gold["article_id"] not in predictions:
-            raise ValueError(f"Missing prediction for annotated article {gold['article_id']}")
-        record = predictions[gold["article_id"]]
-        validate_annotation_snapshot(gold, record)
+        if gold["article_id"] in predictions:
+            record = predictions[gold["article_id"]]
+            validate_annotation_snapshot(gold, record)
+        else:
+            # Extraction-rejected articles never reach the ranker. They exist only
+            # as screening decisions, so they may appear only as confirmed
+            # exclusions whose saved text still matches its hash. Such records
+            # leave the loop at the UNSUITABLE branch, before `record` is read.
+            if gold.get("review_status") != "UNSUITABLE" or gold.get(
+                "article_text_sha256"
+            ) != text_hash(gold.get("article_text") or ""):
+                raise ValueError(f"Missing prediction for annotated article {gold['article_id']}")
+            counts["screening_only"] += 1
         eligibility = gold.get("eligibility")
         if eligibility is not None:
             validate_eligibility(eligibility)
@@ -698,6 +707,7 @@ def evaluate(records: list[dict], annotations: list[dict], split: str | None = N
         "reviewed_articles": counts["reviewed"],
         "unreviewed_articles": counts["unreviewed"],
         "unsuitable_articles": counts["unsuitable"],
+        "screening_only_articles": counts["screening_only"],
         "annotation_provenance": {
             "reviewed_label_sources": {
                 key.removeprefix("label_source:"): value
