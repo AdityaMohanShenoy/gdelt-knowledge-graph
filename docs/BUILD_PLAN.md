@@ -116,7 +116,8 @@ Recipients verify every hash in the manifest before opening the viewer.
 Open http://127.0.0.1:8001/review. For model inspection, serve the 279-record
 annotations file with `--review-results data/evidence/focal_events/protest-review-300.jsonl`.
 
-- The viewer opens a Postgres pool even for review-only use.
+- Review needs no database. Without Postgres the viewer logs a warning, serves
+  `/review` from the local JSONL, and answers 503 on the article routes.
 - Where a local `docker-compose.override.yml` publishes the container on 5433
   (because Homebrew Postgres holds 5432), set
   `DATABASE_URL=postgresql://gdelt:gdelt_local@localhost:5433/gdelt`. Otherwise
@@ -125,9 +126,6 @@ annotations file with `--review-results data/evidence/focal_events/protest-revie
 - Install with `uv sync --group pipeline --group ml`. If `uv` cache permissions
   fail, set `UV_CACHE_DIR=/tmp/gdelt-uv-cache`, or use `.venv/bin/python`
   directly.
-
-**Optional fix.** Let `/review` start without Postgres, so screening needs no
-database at all.
 
 ---
 

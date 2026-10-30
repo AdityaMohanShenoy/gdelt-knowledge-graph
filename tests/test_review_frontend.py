@@ -359,6 +359,30 @@ def test_manual_entity_helpers_preserve_unicode_evidence_and_review_boundaries()
     assert result.returncode == 0, result.stderr
 
 
+def test_review_starts_without_postgres(tmp_path):
+    api = load_api()
+    path = tmp_path / "annotations.jsonl"
+    path.write_text(jsonl(annotation_records()))
+
+    async def exercise():
+        app = api.create_app(
+            database_url="postgresql://gdelt:unused@127.0.0.1:1/gdelt",
+            review_annotations_path=path,
+        )
+        async with app.router.lifespan_context(app):
+            assert app.state.pool is None
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                assert (await client.get("/review")).status_code == 200
+                assert (await client.get("/api/focal-review/annotations")).status_code == 200
+                assert (await client.get("/api/health")).status_code == 503
+                lookup = await client.get("/api/articles/by-url?url=https://example.com/a")
+                assert lookup.status_code == 503
+
+    asyncio.run(exercise())
+
+
 def test_review_routes_serve_only_the_configured_annotation_file(tmp_path):
     api = load_api()
     path = tmp_path / "annotations.jsonl"
