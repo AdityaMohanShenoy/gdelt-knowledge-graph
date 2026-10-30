@@ -1,3 +1,5 @@
+import copy
+import hashlib
 import json
 import math
 import re
@@ -104,6 +106,18 @@ def annotation_template(record: dict) -> dict:
             }
             for sentence in record["sentences"]
         ],
+        **blank_labels(),
+    }
+    if "screening" in record:
+        annotation["screening"] = record["screening"]
+        annotation["source_metadata"] = record["source_metadata"]
+    if "entity_schema" in record:
+        annotation["entity_schema"] = dict(record["entity_schema"])
+    return annotation
+
+
+def blank_labels() -> dict:
+    return {
         "review_status": "UNREVIEWED",
         "reviewer": None,
         "label_source": None,
@@ -130,12 +144,111 @@ def annotation_template(record: dict) -> dict:
             "exclusion_reason": None,
         },
     }
-    if "screening" in record:
-        annotation["screening"] = record["screening"]
-        annotation["source_metadata"] = record["source_metadata"]
-    if "entity_schema" in record:
-        annotation["entity_schema"] = dict(record["entity_schema"])
-    return annotation
+
+
+# The frozen article snapshot. Everything else on an annotation record is a
+# label or a draft of one.
+SNAPSHOT_KEYS = (
+    "schema_version",
+    "article_id",
+    "article_text_sha256",
+    "headline",
+    "article_text",
+    "sentences",
+    "screening",
+    "source_metadata",
+    "entity_schema",
+)
+
+
+def blind_annotation(record: dict) -> dict:
+    """Reset a record to its snapshot so a test-split reviewer never starts from
+    an AI draft. Whitelisting the snapshot, rather than deleting known draft
+    fields, means a draft field this code has never seen cannot leak through."""
+    return {
+        **{key: copy.deepcopy(record[key]) for key in SNAPSHOT_KEYS if key in record},
+        **blank_labels(),
+    }
+
+
+def split_groups(records: list[dict], near_duplicate: float = 0.8) -> list[list[int]]:
+    """Indices of records that must share a split: same URL, same content or
+    text hash, or word 5-shingle Jaccard at or above `near_duplicate`."""
+    parent = list(range(len(records)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    first: dict[tuple[str, Any], int] = {}
+    shingles = []
+    for index, record in enumerate(records):
+        meta = record.get("source_metadata") or {}
+        text = record.get("article_text") or ""
+        keys = [
+            ("url", meta.get("url_key")),
+            ("url", meta.get("final_url")),
+            ("content", meta.get("content_hash")),
+        ]
+        # Every empty article has the same text hash; that is not duplication.
+        if text.strip():
+            keys.append(("text", record.get("article_text_sha256")))
+        for key in keys:
+            if key[1]:
+                parent[find(index)] = find(first.setdefault(key, index))
+        words = text.split()
+        shingles.append({tuple(words[i : i + 5]) for i in range(len(words) - 4)})
+    # ponytail: all-pairs Jaccard is ~45k comparisons at 300 articles; switch to
+    # MinHash if a batch reaches thousands.
+    for a in range(len(records)):
+        for b in range(a + 1, len(records)):
+            if (
+                shingles[a]
+                and shingles[b]
+                and len(shingles[a] & shingles[b]) / len(shingles[a] | shingles[b])
+                >= near_duplicate
+            ):
+                parent[find(a)] = find(b)
+    groups: dict[int, list[int]] = {}
+    for index in range(len(records)):
+        groups.setdefault(find(index), []).append(index)
+    return list(groups.values())
+
+
+def assign_splits(
+    records: list[dict],
+    pilot_ids: set[str],
+    seed: str,
+    test_fraction: float,
+    dev_fraction: float,
+) -> tuple[dict[str, str], list[list[str]]]:
+    """Assign whole duplicate groups to pilot, test, dev or train.
+
+    A group containing an inspected pilot article is pilot: a duplicate of an
+    inspected article has been inspected too. The rest are ordered by a seeded
+    hash and fill test, then dev, then train, so the result is stable."""
+    ids = [str(record["article_id"]) for record in records]
+    if len(set(ids)) != len(ids):
+        raise ValueError("Duplicate article IDs in split input")
+    groups = sorted(sorted(ids[i] for i in group) for group in split_groups(records))
+    assignment: dict[str, str] = {}
+    rest = []
+    for group in groups:
+        if pilot_ids.intersection(group):
+            assignment.update(dict.fromkeys(group, "pilot"))
+        else:
+            rest.append(group)
+    rest.sort(key=lambda group: hashlib.sha256(f"{seed}:{group[0]}".encode()).hexdigest())
+    total = sum(map(len, rest))
+    targets = [("test", round(total * test_fraction)), ("dev", round(total * dev_fraction))]
+    counts: Counter = Counter()
+    for group in rest:
+        split = next((name for name, target in targets if counts[name] < target), "train")
+        counts[split] += len(group)
+        assignment.update(dict.fromkeys(group, split))
+    return assignment, [group for group in groups if len(group) > 1]
 
 
 def valid_span(text: str, span: dict) -> bool:
