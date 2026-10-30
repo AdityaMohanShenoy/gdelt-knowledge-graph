@@ -7,7 +7,7 @@ sys.path.insert(0, str(ROOT / "pipeline"))
 
 
 def load_probe():
-    path = ROOT / "pipeline" / "10_probe_fetchability.py"
+    path = ROOT / "pipeline" / "11_probe_fetchability.py"
     spec = importlib.util.spec_from_file_location("probe_fetchability", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

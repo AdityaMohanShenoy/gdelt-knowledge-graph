@@ -1,592 +1,621 @@
-# Build plan — two-stage causal knowledge graph
+# Build plan — evidence-backed causal temporal knowledge graph
 
-Target: a **causal claim graph** over 2024 India protest events. Every link carries
-a grade saying what *kind* of evidence supports it and a confidence saying *how
-much*, and every number is re-derivable from stored evidence.
+Target: a temporal knowledge graph that explains the causal histories of protest
+events in India during 2024. It is event-centric:
 
-This plan is written to be executed task by task from a CLI session. Read
-`CLAUDE.md` first — its invariants bind everything here.
+    Source article → Event mention → Canonical event → Causal relation → Causal explanation
+
+GDELT is the discovery and metadata layer. A GDELT row or a source article is not
+automatically a graph event. Every accepted event and causal edge stays traceable
+to an exact text span in a GDELT-backed article.
+
+> **ML retrieves and proposes; evidence and human review decide.**
+
+This plan follows the focal-event work in `pipeline/10_extract_focal_events.py`
+and its review frontend (PR #8), and the project handoff of 2026-10-30. It
+supersedes the plan of 2026-09-17. Work that plan already delivered is kept and
+mapped onto the phases below. Read `CLAUDE.md` first; its invariants bind
+everything here.
 
 ---
 
 ## How to drive this from the CLI
 
 Tasks are numbered `P<phase>.<n>`. Each names its goal, the files it touches, and
-an acceptance test. A session should be able to take one task and finish it.
+an acceptance test.
 
     claude
-    > read docs/BUILD_PLAN.md and do P0.1
-    > P1.2 is failing on rate limits, fix it and re-run the acceptance check
+    > read docs/BUILD_PLAN.md and do P4.1
 
 Rules for whoever executes this:
 
-- **One task per branch/PR.** Tasks are sized to be reviewable alone.
-- **Acceptance criteria are not optional.** A task is done when its check passes,
-  not when the code looks right.
-- **Gates are hard stops.** A gate that fails changes the plan; do not route
-  around it. Record the measurement in `docs/measurements/` and re-scope.
-- **`python test_app.py` must pass before every push.** Existing endpoints are
-  compared byte-identical; see CLAUDE.md on determinism.
+- **One task per branch/PR.**
+- **Acceptance criteria are not optional.** Done means the check passes.
+- **Gates are hard stops.** Record the measurement in `docs/measurements/` and
+  re-scope rather than routing around a failed gate.
+- **Never overwrite a source file.** Screening, extraction, prediction and
+  template files are immutable. Every reviewed export and experiment gets a new
+  filename.
+- **Commit the measurement, not just the data.** `data/evidence/` is gitignored, so
+  every metrics file that a decision rests on gets a summary in
+  `docs/measurements/` with its input hashes.
+- **`python test_app.py` must pass before every push.**
 
 ---
 
 ## Where we are now
 
-Already built and on `main`:
+### Focal-event review batch
 
-| Thing | State |
+| Item | State |
+|---|---:|
+| Screened records | 300 |
+| Retained full article snapshots | 279 |
+| Extraction-rejected records | 21 |
+| Proposed usable focal events | 205 |
+| Proposed exclusions | 95 (74 unrelated + 21 insufficient text) |
+| Proposed direct protest / protest-linked | 204 / 1 |
+| Supporting sentence selections | 477 |
+| Completed entity labels | 0 |
+| Human-verified records | 0 |
+
+Every record is `review_status = UNREVIEWED`, `reviewer = Codex (AI)`,
+`label_source = ai_assisted`. **None of these are gold labels.** The 52.7% Top-1 /
+75.6% Top-3 overlap in the README is measured against AI drafts, not human
+judgement, and is not a baseline.
+
+Authoritative files, all under `data/evidence/focal_events/`:
+
+| File | Role |
 |---|---|
-| `out/step2_causal_filtered.parquet` | 1,120,666 GDELT events, 2024, top-10 countries |
-| `pipeline/dashboard/01`–`04` | country filter, causal filter, URL validation, Neo4j export |
-| Causal Evidence tab | working demo: 4 of 6 channels, metadata only, full derivation trace |
-| `app.py` scoring | `_causal_matrix_rows`, `_token_idf`, `_pick_probes`, `causal_score` |
+| `protest-review-300.ai-assisted.packet.jsonl` | all 300 records; serve this for screening |
+| `protest-review-300.ai-assisted.annotations.jsonl` | 279 full sentence-level records |
+| `protest-review-300.ai-assisted.screening.jsonl` | screening proposals |
+| `protest-review-300.ai-assisted.manifest.json` | hashes of the above |
+| `protest-review-300.jsonl` | saved predictions (279) |
+| `protest-review-300.v2.annotations.jsonl` | blank template, no AI draft, no ranks |
+| `protest-review-300.screening.jsonl` | source screening |
 
-What does **not** exist yet, and is what this plan builds:
+The first 60 screening records are the earlier pilot, so the 300 are a nested
+sample, not an independent one.
 
-- No article text. `SOURCEURL` only.
-- No atomic events — one GDELT row is still treated as one event.
-- No canonicalization. Duplicates are not merged.
-- No human annotation, so no labelled set, so **no calibrated confidence**.
-- No `Condition` nodes, so structural causes are unrepresentable.
-- No materialized graph — the demo scores pairs at request time.
+### Already built on `main`
 
-Honest total: **Phases 0–6 is roughly 17–20 weeks** at the stated team size. See
-*Cut lines* at the end before committing to all of it.
-
----
-
-## Phase 0 — Measure before committing
-
-Three numbers nobody has. Each can invalidate a later phase, so they come first.
-Budget: 1–2 weeks.
-
-### P0.1 — Article fetchability
-
-**Goal.** Find out what fraction of 2024 `SOURCEURL`s are still retrievable.
-Everything text-dependent in Phase 2 rests on this.
-
-**Build.** `pipeline/10_probe_fetchability.py`
-
-- Sample 1,000 URLs from the parquet, **stratified by domain** so the result isn't
-  dominated by whichever outlet published most.
-- For each: fetch with a real user agent and a timeout; record HTTP status, final
-  URL after redirects, byte size, detected language, and a paywall guess
-  (`<meta name="robots" content="noarchive">`, known paywall markers, body under
-  ~500 words with a subscribe form).
-- Resumable: keep a cache keyed by URL so a rerun skips completed work.
-- Write `out/fetch_probe.json` and a human summary to
-  `docs/measurements/fetchability.md`.
-
-**Accept when.** The summary reports overall success rate, rate by domain tier
-(top-10 domains vs long tail), and paywall share — and a rerun completes in
-seconds from cache.
-
-> **GATE 0.1.** Success below **40%** means Stage 1's text channels will starve.
-> Do not proceed to P1.2 at full scope. Re-scope to either (a) a narrower seed set
-> concentrated on fetchable domains, or (b) metadata-only Stage 2 with Stage 1
-> limited to what can be read. Record the decision in the measurements file.
-
-Note: `pipeline/dashboard/03_validate_urls.py` already does liveness checking. Reuse its
-cache format rather than inventing a second one.
-
-### P0.2 — Real branching factor
-
-**Goal.** The annotation budget depends entirely on how many parents an event
-actually has. Nobody has measured it.
-
-**Build.** No new code required — use the existing `/api/causal/score` as a
-retrieval aid and record by hand.
-
-- Take 20 India 2024 protest events.
-- For each, expand causes to depth 3. Record: candidates retrieved, candidates a
-  human would accept, at each depth.
-- Write `docs/measurements/branching.md` with mean and spread.
-
-**Accept when.** The file states a mean branching factor with a range, and
-projects total edges for a 500-seed run at depth 3.
-
-> **GATE 0.2.** Branch factor above **4** projects to >100k edges at depth 3.
-> That is not annotatable by hand at any realistic team size, and confirms the
-> calibration approach in P3.4 is mandatory rather than optional.
-
-### P0.3 — Taxonomy discovery
-
-**Goal.** Find out which relation types annotators can actually tell apart,
-*before* committing months of labels to a taxonomy.
-
-**Build.** A 150-pair pilot.
-
-- Present pairs with evidence; annotators write a **free-text** mechanism
-  description. No predefined labels.
-- Cluster the descriptions. Measure which distinctions survive inter-annotator
-  agreement ≥ 0.6.
-- Write `docs/taxonomy.md` with the committed type list and the rejected
-  distinctions with their agreement scores.
-
-**Accept when.** `docs/taxonomy.md` names the final types and justifies each
-against measured agreement.
-
-> **Expectation, not a gate.** The starting seven (`TRIGGERS`, `MOTIVATES`,
-> `MOBILIZES`, `ENABLES`, `ESCALATES`, `PROMPTS_RESPONSE`, `CONTRIBUTES_TO`)
-> will likely collapse to four or five. `TRIGGERS`/`ESCALATES` differ only in
-> whether the effect already existed; `MOTIVATES`/`CONTRIBUTES_TO` differ mainly
-> in annotator confidence, which belongs in the strength field.
+| Thing | State | Used by |
+|---|---|---|
+| Article fetcher + extractor (`07`, `09`) | working; GATE 0.1 passed at 71.1% | all phases |
+| Evidence store (`store/schema.sql`) | `sources`, `mentions`, `events`, `entities`, `claims`, `claim_channels`, `annotations`, `build_versions`; evidence tables append-only by trigger | P7–P12 |
+| `13_load_sources.py` | `article_documents` → `sources`, keyed by `article_document_id` | P7 bridge |
+| Causal annotator (`14_run_annotator.py`, `annotator/`) | accept/edit/reject with the fixed rejection taxonomy; stores machine and human strength; machine score hidden by default; deployable to Vercel against a Supabase `evidence` schema | P9–P10 |
+| `15_link_sources.py` | attaches source articles to store events | P9 |
+| `scoring/` | retrieval and fusion lifted out of `app.py` | P9 |
+| Negative controls (`31`) | **GATE 3.5 failed**: the `pattern` grade fires as often on shuffled pairs as on real ones | P9, P14 |
+| Branching worksheet (`out/branching_worksheet.csv`) | 15 seeds, 323 candidates to depth 3, **0 judged** | P11 gate |
+| Dashboard Causal Evidence tab | metadata-only demo, uncalibrated weights | P13 |
 
 ---
 
-## Phase 1 — Evidence store
+## Phase 0 — Access and environment
 
-An append-only store, so that later phases can be recompiled rather than
-rebuilt. Budget: 2–3 weeks.
+### P0.1 — Share the review packet
 
-### P1.1 — Schema
+**Goal.** The review files exist only on the machine that generated them.
+Nobody else can start Phase 1 until they have them.
 
-**Goal.** One place all evidence lands, never rewritten.
+**Build.** Copy the seven files above plus their manifest to a shared location.
+Recipients verify every hash in the manifest before opening the viewer.
 
-**Build.** `store/schema.sql`, `store/db.py`
+**Accept when.** A second machine reproduces every manifest hash.
 
-Tables:
+### P0.2 — Environment
 
-| Table | Holds |
+    docker compose up -d postgres
+    .venv/bin/python pipeline/08_run_viewer.py --port 8001 \
+      --review-annotations data/evidence/focal_events/protest-review-300.ai-assisted.packet.jsonl
+
+Open http://127.0.0.1:8001/review. For model inspection, serve the 279-record
+annotations file with `--review-results data/evidence/focal_events/protest-review-300.jsonl`.
+
+- The viewer opens a Postgres pool even for review-only use.
+- Where a local `docker-compose.override.yml` publishes the container on 5433
+  (because Homebrew Postgres holds 5432), set
+  `DATABASE_URL=postgresql://gdelt:gdelt_local@localhost:5433/gdelt`. Otherwise
+  the viewer and the Postgres tests reach the wrong server and fail with
+  `role "gdelt" does not exist`.
+- Install with `uv sync --group pipeline --group ml`. If `uv` cache permissions
+  fail, set `UV_CACHE_DIR=/tmp/gdelt-uv-cache`, or use `.venv/bin/python`
+  directly.
+
+**Optional fix.** Let `/review` start without Postgres, so screening needs no
+database at all.
+
+---
+
+## Phase 1 — Human screening review
+
+**Goal.** A human decision on all 300 records: protest relevance, body quality,
+India/2024 scope, and exclusion reason.
+
+Read the complete saved article. Cue counts are not enough: a protest cue may be
+historical, quoted, negated, or unrelated to the article's primary development.
+
+Allowed values (`focal_event_evaluation.ELIGIBILITY_LABELS`):
+
+| Field | Values |
 |---|---|
-| `sources` | url, published_at, fetched_at, content_hash, storage paths, fetch_status |
-| `mentions` | one event as described in one article, with `evidence_start`/`end` |
-| `events` | canonical events, with `best_time`, `time_range`, `time_confidence` |
-| `conditions` | persistent states with `valid_from`/`valid_to` (Phase 4) |
-| `entities` | resolved actors and places |
-| `claims` | one scored candidate pair, **including rejected ones** |
-| `claim_channels` | per-channel scores and raw inputs for a claim |
-| `annotations` | every human accept/edit/reject, with reason and annotator |
-| `build_versions` | config hash → graph version |
+| `protest_relevance` | `PROTEST`, `PROTEST_LINKED`, `UNRELATED`, `UNCERTAIN` |
+| `body_quality` | `COMPLETE`, `LIMITED`, `INSUFFICIENT` |
+| `scope` | `INDIA_2024`, `OUT_OF_SCOPE`, `UNCERTAIN` |
+| `exclusion_reason` | `UNRELATED`, `INSUFFICIENT_TEXT`, `OUT_OF_SCOPE`, `NO_FOCAL_EVENT`, `OTHER` (requires notes) |
 
-SQLite locally; keep DDL Postgres-compatible so Supabase remains an option.
+**Fix on the way through.** Twenty-one AI proposals carry
+`body_quality = INSUFFICIENT_TEXT`. That is an exclusion reason, not a body
+quality. Correct them to `INSUFFICIENT`, or validation fails once they are
+saved.
 
-**Discipline: evidence tables are append-only.** No `UPDATE` on `sources`,
-`mentions`, `annotations`. Corrections are new rows superseding old ones. This is
-what makes P5.2 a recompile rather than a migration.
+The 21 extraction-rejected records stay explicit exclusions unless the source is
+re-acquired and extracts cleanly. Do not invent evidence for them.
 
-**Accept when.** `python -m store.db --init` creates the schema idempotently, and
-a test inserts and reads back one row of each table.
-
-### P1.2 — Article fetcher
-
-**Build.** `pipeline/11_fetch_articles.py`
-
-- Async, concurrency capped **per domain** (not globally) so one slow host doesn't
-  stall the run and no host gets hammered.
-- Respect `robots.txt`. Real user agent. Exponential backoff on 429/503.
-- Raw HTML to disk under `out/articles/` (**add to `.gitignore`**), path recorded
-  in `sources`.
-- Fully resumable — rerunning processes only `fetch_status IS NULL`.
-
-**Accept when.** Interrupting mid-run and restarting processes only the remainder,
-and `sources` row count matches files on disk.
-
-### P1.3 — Text extraction
-
-**Build.** `pipeline/12_extract_text.py`
-
-- `trafilatura` (fallback `readability-lxml`) → main article text, stripped of
-  nav/ads/comments.
-- Store cleaned text; compute `content_hash` over the cleaned text so two URLs
-  serving the same article collapse to one.
-- Record extraction failures rather than dropping them silently.
-
-**Accept when.** A report gives extraction success rate and duplicate rate, and
-spot-checking 10 outputs shows clean article body with no boilerplate.
-
-> **Dependency note.** `trafilatura`, `aiohttp`, `spacy` go in
-> `pipeline/requirements.txt`, **never** the root one. See CLAUDE.md — the root
-> requirements file is runtime-only and the Vercel bundle has no headroom.
+**Accept when.** All 300 records have `eligibility.review_status = REVIEWED`. Each
+has a human screening reviewer (not `Codex (AI)`) and a valid relevance value.
+Every insufficient or unrelated record has an exclusion reason.
 
 ---
 
-## Phase 2 — Stage 1: Verified Core
+## Phase 2 — Focal-event review
 
-The team's original plan, bounded to the seed set. Produces **two** outputs: a
-high-precision core graph, and the labelled decisions that calibrate Stage 2.
-Budget: 4–5 weeks.
+**Goal.** For each usable article, the single primary development and every
+sentence that supports it.
 
-### P2.1 — Atomic event extraction
+**Do P5.1 first.** Test records must be identified before review begins (see
+Phase 5).
 
-**Goal.** One article → several atomic events, each pointing at the exact span it
-came from.
+For each usable article: read the whole text, and decide the primary development.
+Edit the summary, select the supporting sentence IDs, and remove historical or
+irrelevant sentences. Confirm the event is protest-related. Record reviewer,
+provenance, split and notes. For each unsuitable article: mark it `UNSUITABLE`,
+set the exclusion reason, and explain any unusual exclusion in the notes.
 
-**Build.** `pipeline/20_extract_events.py`
+The 205 proposed usable records are starting points. The 74 proposed unrelated
+records also need human review, because automatic relevance can be wrong.
 
-- spaCy dependency parse → subject-verb-object triples, filtered to
-  event-like predicates.
-- Map to CAMEO root codes with a rule table seeded from
-  `data/reference_lookups/`.
-- Every mention records `source_id`, actors, action, target, location,
-  `event_time`, `event_type`, `evidence_start`, `evidence_end`, `confidence`.
-- Store the structured fields; **do not** store a prose sentence. Human-readable
-  text is generated from fields at display time.
+**Provenance.** Use `label_source = human` when the reviewer wrote or changed the
+label. Keep `ai_assisted`, with the human named as `reviewer`, when an AI draft
+was accepted unchanged. Phase 4 reports the two separately.
 
-**Accept when.** On 20 hand-checked articles, every extracted mention's evidence
-span, when sliced out of the cleaned text, contains the event it claims.
+**Test records are reviewed blind.** Use the `v2` template, with no AI draft and
+no model ranks, for every record in the test split. This mirrors the annotator's
+hidden machine score: a label that started from the system's own proposal cannot
+measure that system.
 
-### P2.2 — Canonicalization
+**Accept when.** Reviewed records have `REVIEWED`, a non-empty human reviewer, a
+`label_source`, a non-empty `focal_event_summary`, and valid non-empty
+`supporting_sentence_ids`. Excluded records have `UNSUITABLE`, a reviewer, and
+an `eligibility.exclusion_reason`. Every article text, hash, headline, sentence
+boundary and offset is unchanged; `10_extract_focal_events.py audit` and the
+snapshot validation in `evaluate` both pass.
 
-**Goal.** Many mentions of one real event → one canonical event.
+---
 
-**Build.** `pipeline/21_canonicalize.py`
+## Phase 3 — Entity annotation
 
-- Block on (date bucket, location, event type) to avoid all-pairs comparison.
-- Within a block, score on actor overlap, action similarity, time proximity.
-- Auto-merge above a high threshold; queue the middle band for human review;
-  never auto-merge below.
-- Canonical event records `supporting_sources`, and `best_time` with its
-  confidence and possible range.
+**Goal.** An exhaustive NER benchmark over `PERSON`, `ORGANIZATION`, `LOCATION`,
+`DATE`.
+
+Annotate every occurrence in the full article, not only the support sentences.
+That includes repeated mentions, background text and bylines:
+
+    {"text": "Delhi", "label": "LOCATION", "start_char": 10, "end_char": 15}
+
+- Use exact Python character offsets, and never edit article text.
+- Never copy model predictions automatically.
+- An article with no eligible entities gets a confirmed `[]`, not `null`.
+- Set `whole_article_checked = true` only after reading the complete text.
+- The 21 rejected snapshots have no reliable text and are not annotated.
+
+**Scale.** The model predicted 3,647 entity spans across the 279 snapshots, about
+13 per article. Exhaustive annotation is the largest single labelling job in this
+plan. Start with the test split (see *Cut lines*).
+
+**Double review.** Have a second reviewer annotate at least 20% of the records
+independently. Report exact-offset-and-label agreement before freezing.
+
+**Accept when.** Every benchmark record has `gold_entities` as a list,
+`ner_annotation.review_status = REVIEWED`, `whole_article_checked = true`, and a
+reviewer. Inter-reviewer agreement is reported.
+
+---
+
+## Phase 4 — Freeze the gold dataset
+
+### P4.1 — `freeze` command
+
+**Build.** Add a `freeze` subcommand to `10_extract_focal_events.py`. Today there
+are `prepare-models`, `screen`, `extract`, `annotate`, `evaluate` and `audit`,
+and nothing writes the manifest.
+
+Output: `protest-review-300.gold.v1.annotations.jsonl` plus a manifest with:
+- input and output hashes
+- article, reviewed and unsuitable counts
+- entity counts
+- reviewer provenance, with counts by `label_source`
+- schema version and the exclusions
+- validation results and a creation timestamp
+
+The command refuses to write a file named `gold` if any record's reviewer is
+`Codex (AI)`. If labels were accepted from AI without human inspection, name the
+dataset `ai-assisted` or `weak` and keep it apart from the test set.
+
+    .venv/bin/python pipeline/10_extract_focal_events.py evaluate \
+      --input data/evidence/focal_events/protest-review-300.jsonl \
+      --annotations data/evidence/focal_events/protest-review-300.gold.v1.annotations.jsonl \
+      --output data/evidence/focal_events/protest-review-300.gold.v1.metrics.json
+
+Confirm `evaluate` accepts the 21 screening-only records against the 279-record
+prediction file before relying on this command.
+
+**Accept when.** `freeze` runs twice and produces byte-identical output, the
+manifest hashes verify, and `evaluate` passes on the frozen file.
+
+---
+
+## Phase 5 — Splits
+
+### P5.1 — Assign stable splits, before review
+
+| Split | Use |
+|---|---|
+| `train` | model fitting |
+| `dev` | threshold and rule tuning |
+| `test` | final one-time evaluation |
+| `demo` | interactive demonstration subset |
+
+- Keep each normalized source URL, and each near-duplicate article (same
+  `content_hash`, or near-identical text), within one split.
+- Inspect source-host overlap and temporal coverage, and keep the protest cohorts
+  represented in every split.
+- **The 58 previously inspected pilot records never enter `test`.** They are
+  already anchored to model output; use them for calibration.
+- `evaluate` accepts only `pilot`, `train`, `dev`, `test`. Either keep `demo` as
+  a separate ID list, or extend the validator.
+- The test split is frozen once tuning begins.
+
+**Accept when.** A committed `docs/measurements/splits.md` reports counts per
+split and cohort, and states zero URL or content-hash overlap across splits. The
+split assignment file is hashed into the Phase 4 manifest.
+
+---
+
+## Phase 6 — Baseline
+
+**Goal.** Measure the current system before introducing a new model.
+
+Report focal-event Top-1 accuracy and Top-3 recall, and evidence-span validity.
+Report NER precision, full-article recall, candidate-only recall, and
+exact-offset-and-label accuracy. Break results down by protest cohort, by article
+quality, and for short and noisy articles.
+
+Analyse errors on:
+- Top-3 misses and wrong focal summaries
+- historical or quoted protest mentions
+- navigation-contaminated text
+- multi-event articles
+- conflicting entity labels
+- long sentences and offset errors
+
+**Accept when.** `docs/measurements/focal_baseline.md` reports dev-set metrics
+with input hashes and the error analysis. Test-set numbers are reported once,
+separately, and are not used for any later tuning.
+
+---
+
+## Phase 7 — Atomic event mentions
+
+**Goal.** One article → several structured mentions. The focal event is one of
+them, not the only one.
+
+    E1 Government announced a policy   E2 Union rejected the policy
+    E3 Union called for a march        E4 Demonstrators blocked a road
+
+**Build.** `pipeline/20_extract_events.py`, writing to the store's `mentions`.
+
+Fields: `event_mention_id`, `source_article_id`, actors, action, target/topic,
+location, `event_time`, `event_type`, `evidence_start`, `evidence_end`,
+`confidence`, `review_status`. Every field is backed by an exact span or
+explicitly marked uncertain. ML may propose mentions; it must not invent
+unsupported ones.
+
+- **Bridge.** A focal `article_id` is `article_documents.document_id`. In the
+  store, that is `sources.article_document_id`.
+- **Offsets need a pinned text.** Screening snapshots re-extract from saved HTML
+  with the current extractor, so they can differ from the stored cleaned text.
+  Each mention records the hash of the exact text its offsets index into.
+- **Schema migration.** `mentions` lacks `review_status`, target/topic and
+  location, and holds only two actor slots. `entities.kind` uses
+  `actor`/`place`/`organisation`, while NER emits
+  `PERSON`/`ORGANIZATION`/`LOCATION`; map them in one place. The store is
+  append-only, so add columns; do not rewrite rows.
+- Seed from Phase 2: each reviewed focal event and its support sentences become
+  the article's first mention.
+
+**Accept when.** On 20 hand-checked articles, every mention's evidence span, sliced
+from its pinned text, contains the event it claims, and no field is unsupported.
+
+---
+
+## Phase 8 — Canonicalization
+
+**Goal.** Mentions of the same real event in different articles → one canonical
+event.
+
+**Build.** `pipeline/21_canonicalize.py`, writing the store's `events` and
+`mentions.event_id`.
+
+- Block on date bucket, location and event type. Within a block, score actor and
+  location overlap, date proximity, action and semantic similarity, shared
+  entities, and supporting evidence.
+- Automate high-confidence merges. Send ambiguous ones to human review. Never
+  auto-merge below the review band.
+- Canonical events carry `canonical_event_id`, description, `event_type`,
+  actors, location, `best_time`, `time_range`, `time_confidence`,
+  `supporting_sources`, and `review_status`.
+- **Never** merge because two articles share a URL or a GDELT event row. Today
+  `events.external_id` holds a GDELT GlobalEventID, from annotator seeding.
+  Canonical events must not be seeded one-to-one from GDELT rows.
 
 **Accept when.** A known multi-outlet event collapses to one node, and the report
 gives merge counts by tier (auto / reviewed / rejected).
 
-> **Why this is load-bearing.** Without it the strongest "causal" links will be
-> the same event reported twice. It also makes corroboration meaningful — counting
-> independent outlets requires knowing which reports are the same story.
-
-### P2.3 — Annotation tool
-
-**Goal.** Humans judge; they do not search.
-
-**Build.** New routes in `app.py` plus `frontend/annotate.html`.
-
-The screen shows: target event, one candidate cause, the primary evidence span in
-context, other supporting spans, a suggested relation type, a suggested strength,
-and the full article on demand. Actions: **Accept / Edit / Reject**.
-
-- Reject requires a reason from the fixed taxonomy: `NO_CAUSAL_EVIDENCE`,
-  `TEMPORALLY_INVALID`, `WRONG_EVENT_MATCH`, `DUPLICATE_EVENT`, `CORRELATED_ONLY`,
-  `INSUFFICIENT_EVIDENCE`, `WRONG_DIRECTION`, `OTHER` + free text.
-- Store **both** the machine-suggested strength and the human's final value. Never
-  overwrite the machine value — P3.4 needs both to measure calibration.
-- Every action writes an `annotations` row with annotator id and timestamp.
-
-**Accept when.** A full accept/edit/reject cycle persists correctly, and rejected
-candidates are queryable as a set.
-
-> **Rejections are the most valuable output here.** They are the near-misses — the
-> hard negatives that make a trained ranker useful. A model trained only on
-> accepts plus random negatives learns nothing, because random negatives are
-> trivially easy.
-
-### P2.4 — Annotation run
-
-**Goal.** ~600 judged pairs over ~500 India 2024 protest seeds.
-
-- **Bounded.** Seeds only; no unlimited recursion. Recursion comes in P5.3, driven
-  by the calibrated scorer rather than by hand.
-- One primary annotator per pair; **25% double-annotated**, rotating pairs across
-  the four annotators.
-- Measure inter-annotator agreement and resolve disagreements by discussion.
-  Record the resolution, not just the outcome.
-
-**Accept when.** ≥600 judged pairs exist, IAA is reported per relation type, and
-every event has an explicit search status: `PARENTS_FOUND`,
-`NO_SUPPORTED_PARENT_FOUND`, `NOT_YET_REVIEWED`, `UNVERIFIABLE`.
-
-> Search status matters more than it looks. Without it, "we looked and found
-> nothing" and "nobody has looked yet" are the same empty result, and they mean
-> opposite things.
+> Without this, the strongest "causal" links are the same event reported twice,
+> and corroboration counts outlets that are really one story.
 
 ---
 
-## Phase 3 — Stage 2: full six-channel fusion
+## Phase 9 — Candidate causes
 
-Upgrade the demo scorer into the real one, and calibrate it on Phase 2's labels.
-Budget: 3 weeks.
+**Goal.** For each accepted 2024 India protest seed, a broad and inspectable set
+of candidate causes.
 
-### P3.1 — Refactor scoring out of `app.py`
+**Build.** Re-point `14_run_annotator.py seed` and `scoring/retrieval.py` at
+canonical events instead of GDELT rows.
 
-**Goal.** `app.py` is ~1000 lines with scoring inline. Split before adding to it.
+1. Search backward through GDELT-backed events, starting with a 7-day window.
+2. Retrieve broadly on actor, entity, location, date, event type and text.
+3. Allow upstream events outside the protest category, and attach evidence
+   articles (`15_link_sources.py`).
+4. Store every candidate, including ones that will be rejected.
 
-**Build.** `scoring/` package — `channels/`, `fuse.py`, `grade.py`.
+Similarity, embeddings, temporal order and actor overlap create candidates. They
+never establish causality. GATE 3.5 already showed that the fused score cannot
+tell real pairs from shuffled ones at the `pattern` grade. Use it to order the
+queue, never as a confidence.
 
-- Move `_causal_matrix_rows`, `_matrix_index`, `_token_idf`, `_pick_probes` and
-  the per-channel logic out of `app.py`.
-- **API responses must stay byte-identical.** This is a pure refactor.
+The 3,642 claims already seeded from 40 GDELT-row targets are a legacy pilot.
+The store is append-only, so keep them, tagged, and exclude them from results.
 
-**Accept when.** `python test_app.py` passes unchanged, and a golden capture of
-`/api/causal/score` before and after the refactor diffs clean.
-
-### P3.2 — Real textual assertion channel
-
-**Goal.** Replace the precursor-link proxy with actual connective detection.
-
-**Build.** `scoring/channels/textual.py`
-
-- Find sentences mentioning both events (resolved entities + action match).
-- Detect causal connectives over the dependency parse. Score by **directness**:
-  explicit causal (`because of`, `caused by`) > explicit response (`in response
-  to`, `protesting against`) > temporal-implicative (`following`, `in the wake
-  of`) > bare adjacency.
-- Check direction — a sentence establishing B→A scores zero for A→B.
-- Optionally train a classifier on PDTB `Contingency.Cause` relations.
-
-**Accept when.** On a hand-labelled set of 100 sentences, precision and recall are
-reported per directness tier.
-
-### P3.3 — Contradiction channel
-
-**Goal.** The channel currently reporting `available: false`.
-
-**Build.** `scoring/channels/contradiction.py`
-
-- Same machinery as P3.2, inverted patterns: `unrelated to`, `denied any
-  connection`, `not in response to`, `rejected suggestions that`.
-- Also temporal contradiction — evidence that B actually preceded A.
-- Only this channel gets a negative weight.
-
-**Accept when.** A known denial case scores above zero and measurably lowers the
-fused confidence, and the channel's `available` flag flips to `true` only when a
-corpus is present.
-
-> Keep the unavailable path working. If the corpus is missing for a pair, the
-> channel must still report `available: false` rather than 0 — see CLAUDE.md.
-
-### P3.4 — Calibration
-
-**Goal.** Replace the illustrative weights with fitted ones, and attach a real
-error rate.
-
-**Build.** `pipeline/30_calibrate.py` → `scoring/weights.json`
-
-- Stratify Phase 2's judged pairs into 5 confidence bands; fit logistic regression
-  on the channel scores.
-- **Fit per stratum** (trigger / mobilisation / grievance / structural). A missing
-  channel means different things at different depths: in the trigger stratum
-  absent text is genuine negative evidence; in the structural stratum it is
-  expected and therefore uninformative. One global model applies the trigger
-  stratum's penalty to exactly the claims the structural stratum exists to
-  rescue.
-- Emit a calibration curve per band and precision with confidence intervals per
-  grade.
-
-**Accept when.** `scoring/weights.json` is loaded at runtime instead of the
-hardcoded `CAUSAL_W`, and the UI stops saying weights are uncalibrated because
-they no longer are. Report precision ± CI per grade.
-
-### P3.5 — Negative controls
-
-**Goal.** Find out whether the fusion is fitting artifacts — before building on it.
-
-**Build.** `pipeline/31_negative_controls.py`
-
-- Score shuffled event pairs and known-unrelated pairs.
-- Measure the false-positive rate at each grade threshold.
-
-**Accept when.** FPR is reported per grade.
-
-> **GATE 3.5.** A high false-positive rate on shuffled data means the model is
-> learning noise. Fix it here. Do not proceed to Phase 4 on top of a scorer that
-> finds causes in randomness.
+**Accept when.** Every seed has a candidate set stored as `claims`, and the queue
+serves candidates across seeds rather than draining one seed first.
 
 ---
 
-## Phase 4 — Conditions and strata
+## Phase 10 — Causal annotation
 
-The change that lets structural causes exist at all. Budget: 2 weeks.
+**Goal.** Human-verified edges, and a preserved set of rejections.
 
-### P4.1 — Condition nodes
+Use the existing annotator. It already implements accept/edit/reject, the
+rejection taxonomy, machine and human strength stored side by side, and a hidden
+machine score.
 
-**Goal.** "Declining farm-gate prices, Punjab, 2022–2024" is not an event. It has
-no moment of occurrence, so with only `Event` nodes it has nowhere to live — and
-better retrieval cannot fix a missing node type.
+Relation types: `TRIGGERS`, `MOTIVATES`, `MOBILIZES`, `ENABLES`, `ESCALATES`,
+`PROMPTS_RESPONSE`, `CONTRIBUTES_TO`.
 
-**Build.** `conditions` table + relations.
+Each edge stores:
+- `source_event_id`, `target_event_id`
+- `relation_type`, `machine_relation_type`
+- `machine_strength`, `final_strength`, `temporal_gap`
+- `primary_evidence`, `supporting_evidence` (mention spans)
+- `evidence_quality`, `corroboration_count`
+- `review_status`, `reviewer_id`
 
-- `condition_id`, `description`, `valid_from`, `valid_to` (may be open),
-  `indicator_series` (optional link to numeric data), `evidence`.
-- Relations: `Condition --SUSTAINS--> Event`, `Event --CHANGES--> Condition`.
-- Seed from text assertions of persistent states, plus any indicator series
-  available.
+Of these, `machine_relation_type`, the evidence spans, `evidence_quality` and
+`corroboration_count` are not in `claims`/`annotations` yet, and need adding.
 
-**Accept when.** At least one condition node sustains multiple events across an
-interval, and it appears in a causal explanation for each.
+**Accept** only on inspectable text:
+- explicit "because of" wording
+- explicit response wording
+- protest-against wording
+- a clear policy–response linkage
+- clearly described escalation
+- direct mobilization or organizing language
 
-### P4.2 — Four strata
+**Never accept** on temporal order, actor similarity, shared topic, embedding
+distance, or a model prediction alone.
 
-**Build.** Stratum assignment + per-stratum windows.
+**Reject with a reason:** `NO_CAUSAL_EVIDENCE`, `TEMPORALLY_INVALID`,
+`WRONG_EVENT_MATCH`, `DUPLICATE_EVENT`, `CORRELATED_ONLY`,
+`INSUFFICIENT_EVIDENCE`, `WRONG_DIRECTION`, or `OTHER`. Rejections are the hard
+negatives a later ranker trains on.
 
-| Stratum | Timescale | Node kind | Dominant channel |
-|---|---|---|---|
-| Trigger | hours – 3 days | Event | textual assertion |
-| Mobilisation | 3 – 21 days | Event | textual + actor continuity |
-| Grievance | 3 weeks – 6 months | Event or Condition | contrastive |
-| Structural | 6 months+ | Condition | statistical + indicators |
+**Agreement.** Double-annotate 25% of pairs and report agreement per relation
+type. Expect the seven types to collapse to four or five. `TRIGGERS` and
+`ESCALATES` differ only in whether the effect already existed. `MOTIVATES` and
+`CONTRIBUTES_TO` differ mostly in confidence, which belongs in strength. Revise
+the taxonomy from the measured agreement.
 
-Replaces the single 7-day window (`CAUSAL_WINDOW_DAYS`).
-
-**Accept when.** A long-lag relationship that the 7-day window cannot reach is
-recovered and graded.
+**Accept when.** Every judged pair persists with its reviewer and timestamp,
+rejected candidates are queryable as a set, and agreement is reported per type.
 
 ---
 
-## Phase 5 — Stage 3: reconciliation and graph build
+## Phase 11 — Recursive expansion
 
-Budget: 2 weeks.
+**Goal.** When `A → B` is accepted, A becomes the next target.
 
-### P5.1 — Combined grades
+Stop a branch when:
+- no supported parent is found
+- 2024-01-01 is reached
+- the evidence becomes unverifiable
+- the branch is rejected
 
-**Build.** `scoring/grade.py` — grades over both stages:
+Record each event's search status: `PARENTS_FOUND`,
+`NO_SUPPORTED_PARENT_FOUND`, `NOT_YET_REVIEWED`, `UNVERIFIABLE`. Without that
+status, "we looked and found nothing" and "nobody has looked" read the same.
 
-| Grade | Rule |
-|---|---|
-| Verified & Corroborated | human approved **and** channels independently agree |
-| Verified | human approved, channels neutral |
-| **Verified but Unsupported** | human approved, channels find no pattern — **flag for re-review** |
-| Pattern-based | Stage 1 never saw it, channels strong |
-| Disputed | real support **and** an explicit denial |
+Precision over recall: an unsupported edge stays absent rather than becoming a
+low-confidence guess. Converge on existing canonical events rather than
+duplicating them. Cause time precedes effect time, so the instance graph is
+acyclic by construction.
 
-**Accept when.** Each grade is populated, and the *Verified but Unsupported* set
-is exportable as a review queue.
-
-> This grade is the point of running both stages. It finds links a human accepted
-> that the data cannot support — which is where journalistic clichés hide. Neither
-> approach alone can produce it.
-
-### P5.2 — Graph materialization
-
-**Goal.** The graph as a **compiled artifact**, not a hand-edited database.
-
-**Build.** `pipeline/40_build_graph.py`
-
-- `build(config)` reads the claims table and emits a versioned graph.
-- Config: thresholds, fusion weights version, taxonomy version, window params.
-- Record config hash in `build_versions`. Every version reproducible from
-  evidence + config.
-- Emit both the detailed claim records and a flat edge table for fast traversal.
-
-**Accept when.** Two runs with the same config produce byte-identical output, and
-changing one threshold produces a different version without touching the evidence
-store.
-
-### P5.3 — Recursive expansion
-
-**Build.** Drive expansion with the calibrated scorer.
-
-- Each accepted parent becomes the next target.
-- Stop at: no parent above threshold, depth limit, or 2024-01-01.
-- Converge on existing canonical nodes rather than duplicating.
-- Instance graph is acyclic for free — every claim requires cause time < effect
-  time, so following arrows backwards always moves back in time.
+> **GATE 11 — branching factor.** Judge `out/branching_worksheet.csv` (15 seeds,
+> 323 candidates, none judged yet) and write `docs/measurements/branching.md`.
+> A mean above **4** accepted parents projects to more than 100k edges at depth
+> 3, which no team can verify by hand. In that case, bound the depth or the
+> number of seeds before starting human-verified recursion.
 
 **Accept when.** A seed expands to a multi-level DAG, branches converge on shared
 nodes, and a cycle check finds none.
 
 ---
 
-## Phase 6 — Query layer and external validation
+## Phase 12 — Graph storage and build
 
-Budget: 3 weeks.
+The store already keeps these separate: source articles (`sources`), event
+mentions (`mentions`), canonical events (`events`), entities, causal edges
+(`claims`), annotation decisions (`annotations`) and config versions
+(`build_versions`). Rejected candidates and evidence spans live in those tables
+too. Large raw HTML and cleaned text stay on the evidence volume or in object
+storage, never inside graph tables.
 
-### P6.1 — Query grounding over event sets
+**Build.** `pipeline/40_build_graph.py`, which compiles the graph from the store
+plus a config. It is a versioned, reproducible artifact, not a hand-edited
+database. Every edge keeps:
+- source article IDs, exact spans and URLs
+- event dates
+- reviewers and review history, including rejections
+- confidence values
 
-"Why were farmers protesting?" has no single referent — a movement is dozens of
-events over months. Ground to a **cluster**, answer over it, offer constituents
-for narrowing. Ask for clarification when several clusters match.
+**Accept when.** Two builds with the same config are byte-identical, and changing
+one threshold yields a new version without touching the evidence store.
 
-### P6.2 — Path ranking and coverage
+---
 
-- Rank by causal strength + query relevance + evidence quality + corroboration.
-- **Report coverage with every answer**: what fraction of the target's causal
-  support the explanation accounts for.
-- Expose the grade filter: *confirmed only* for a defensible claim, *include
-  pattern-based* for the fuller picture.
+## Phase 13 — Query and explanation
 
-### P6.3 — External validation
+    User question → Event grounding → Causal subgraph retrieval → Path ranking → Evidence-backed explanation
 
-Three tests, none of which consults the annotation pool:
+- Ground a question to a cluster of events when it names a movement rather than
+  one event. Ask for clarification when several clusters match.
+- Rank paths by relation strength, query relevance, evidence quality and
+  corroboration. Report coverage: how much of the target's causal support the
+  answer accounts for.
+- Explanations cite canonical events, dates, relation types, edge strengths,
+  source articles and exact spans. Prose is generated from graph records.
+  Explanations never create new relationships.
+- Dashboard integration replaces the demo Causal Evidence tab. The runtime still
+  reads one data source (see `CLAUDE.md`), so decide deliberately how the
+  compiled graph deploys.
 
-1. **Temporal holdout.** Fit on Jan–Sep, test whether recovered causal parents
-   improve prediction of Oct–Dec events over a base-rate model.
-2. **Documented-chain recovery.** 15–20 events with published post-mortems; the
-   2024 farmers' movement has extensive retrospective coverage. Measure recall
-   against the chains those accounts establish. Genuine external ground truth,
-   about a week to assemble.
-3. **Negative controls.** Rerun P3.5 against the final model.
+---
 
-**Accept when.** All three are reported in `docs/validation.md`.
+## Phase 14 — Final evaluation and release
 
-> IAA measures whether annotators agree with each other, never whether they are
-> right. Without these three, the system validates itself against itself.
+The project is complete when:
+- all final screening records are reviewed
+- every accepted focal event has exact evidence
+- every excluded record has a reason
+- all benchmark NER records are confirmed against the whole article
+- the test set was never used for tuning
+- every causal edge is human-verified, with source evidence
+- rejected candidates are preserved
+- the graph builds reproducibly from versioned inputs
+- evaluation reports are saved with hashes
+- queries return evidence-backed explanations
+- the demo traces a path from question to source article and sentence
 
-### P6.4 — Dashboard integration
+External checks, none of which consult the annotation pool:
+1. **Documented-chain recovery.** Take 15–20 events with published post-mortems
+   (the 2024 farmers' movement has extensive retrospective coverage) and measure
+   recall against the chains those accounts establish.
+2. **Negative controls.** Rerun `31_negative_controls.py` against the final
+   retrieval and report false positives.
 
-Replace the demo Causal Evidence tab with the real graph. Carry over the
-derivation trace — it is the auditability story and it already works.
+Agreement between reviewers measures consistency, not correctness. Without these
+checks, the system only validates itself against itself.
 
-Also close the gaps the demo left open:
+---
 
-- `/api/causal/matrix` has no UI. The endpoint works and the scorer uses it.
-- Global sidebar filters (country / event class / date range) do not reach the
-  tab; it has its own country dropdown and always uses the full 2024 range.
-- Only the ~12 seed events per country are reachable; the endpoint accepts any id
-  but there is no search.
-- `app.py` sets `s-maxage=31536000` — a **one-year** CDN cache — on every `/api/`
-  response. Predates this work, but it makes any API shape change slow to
-  propagate. Revisit before the API is used in anger.
+## Responsibilities
+
+| Agent | Human reviewer |
+|---|---|
+| schema validation; hash and offset checks | ambiguous protest relevance |
+| candidate retrieval; model proposals | focal-event correctness |
+| duplicate detection | entity inclusion decisions |
+| manifests; repeatable exports; metrics | canonicalization disputes |
+| browser and database tests | causal direction and relation type |
+| preserving provenance | final edge acceptance; test-set protection |
 
 ---
 
 ## Constraints that bind every task
 
-From `CLAUDE.md`, repeated because they have already caused bugs:
-
-- **Never re-add pandas.** Root `requirements.txt` is runtime-only.
-- **`num()` for every numeric that could be an aggregate.** `AVG()` over zero rows
-  is NULL and arrives as `None` from tuples, `NaN` from dicts.
-- **Every `ORDER BY` with ties needs a tiebreaker.** Responses are compared
+- **Never re-add pandas.** Root `requirements.txt` is runtime-only. Pipeline deps
+  go in `pipeline/requirements.txt` and the `pipeline` group, and model deps in
+  the `ml` group.
+- **Exact Python character offsets**, against a pinned text hash. Article text is
+  never edited.
+- **Evidence tables are append-only.** Corrections are new rows.
+- **`num()` for every numeric that could be an aggregate**, and **every
+  `ORDER BY` with ties needs a tiebreaker**. Responses are compared
   byte-identical.
-- **Runtime reads one parquet.** Don't add a second runtime data source without
-  deciding deliberately how it deploys.
-- The Causal Evidence scoring invariants — spike days, `available: false` never 0,
-  IDF-weighted actor tokens, one-type-one-candidate — are all documented in
-  `CLAUDE.md`. Read that section before touching `scoring/`.
+- **`available: false`, never 0**, for a signal with no data. "Nobody denied it"
+  and "we never looked" must stay distinguishable.
 
 ---
 
 ## Cut lines
 
-If time runs short, cut in this order. Each leaves a coherent system.
+Cut in this order. Each leaves a coherent system.
 
-1. **P6.3 tests 1 and 2.** Keep negative controls. You lose external validation
-   and must say so explicitly in any writeup.
-2. **Phase 4 entirely.** You lose structural causes and keep the single window.
-   This is the largest capability loss on the list — cut it only if Phase 2
-   overran badly.
-3. **P3.2 / P3.3 real text channels.** Fall back to the precursor proxy and a
-   permanently-unavailable contradiction channel. The architecture still stands;
-   two of six channels stay weak.
-4. **P5.3 recursion.** Ship depth-1 explanations only. Still useful, much less
-   interesting.
+1. **Phase 3 beyond the test split.** Exhaustive NER on the test split only.
+   Training NER waits.
+2. **Phase 13 query grounding.** Ship fixed explanations for the seed events.
+3. **Phase 11 recursion.** Ship depth-1 causes only.
+4. **External check 1.** Keep the negative controls, and say so in any writeup.
 
-**Do not cut:** P0 (the gates), P2.3–P2.4 (no labels means no calibration means no
-error rate), P3.4 (the whole claim of the design), P3.5 (cheapest and most
-diagnostic test you have).
+**Do not cut:** Phases 1–2 human review, test-set protection (Phases 2 and 5),
+preserved rejections, or edge agreement in Phase 10.
+
+### Deferred from the 2026-09-17 plan
+
+Not scheduled. Revisit after Phase 12:
+- condition nodes and the four timescale strata (structural causes such as
+  "falling farm-gate prices, Punjab, 2022–2024" have no node type until then)
+- the six-channel fusion's textual and contradiction channels
+- calibrated weights fitted on Phase 10's machine-versus-human strengths
+- the combined grades
 
 ---
 
 ## Open decisions
 
-Resolve these before the phase that depends on them.
-
 | Decision | Needed by | Note |
 |---|---|---|
-| SQLite vs Postgres/Supabase | P1.1 | SQLite is simpler; Supabase matters only if annotators work concurrently from different machines |
-| Extraction: rules vs trained model | P2.1 | Rules are faster to build and debug; a model needs labels you don't have yet |
-| Whether checks 3 and 4 stay separate | P3.4 | Empirical. If fitted weights show one absorbing the other, merge them |
-| Neo4j or stay in SQL | P5.2 | `pipeline/dashboard/04_export_neo4j.py` exists. Recursive CTEs over a materialized edge table may be enough, and deploy far more easily |
-| Article text redistribution | P1.2 | Full text stays private to the team unless licensing says otherwise |
+| Where the review packet is shared | P0.1 | Must preserve bytes; hashes are checked |
+| Can unchanged AI drafts enter gold? | Phase 4 | Recommended: yes for train/dev with `ai_assisted` provenance; never for test |
+| `demo` as a split or a separate list | P5.1 | `evaluate` rejects unknown split values |
+| Local Postgres vs Supabase | Phase 12 | Handoff says stabilize locally first; the annotator already deploys against a Supabase `evidence` schema |
+| Seven relation types or fewer | Phase 10 | Decide from measured agreement |
+| Article text redistribution | P0.1 | Full text stays private to the team unless licensing says otherwise |
 
 ---
 
 ## What this will and will not establish
 
-It produces **causal claims graded by evidential support, with a measured error
-rate**. It does not verify causality — nothing built on observational news data
-can, because February cannot be rerun without the policy announcement.
+It produces **causal claims backed by inspectable evidence and human review, with
+measured agreement and a protected test set**. It does not verify causality.
+Nothing built on observational news data can: February cannot be rerun without
+the policy announcement.
 
 Name the relation `SUPPORTED_CAUSE`, not `CAUSES`. Call the artifact a *causal
-claim graph*. State the ceiling before a reviewer states it for you.
+claim graph*.
