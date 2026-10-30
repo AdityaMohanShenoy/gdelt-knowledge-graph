@@ -134,6 +134,11 @@ annotations file with `--review-results data/evidence/focal_events/protest-revie
 **Goal.** A human decision on all 300 records: protest relevance, body quality,
 India/2024 scope, and exclusion reason.
 
+**Do P5.1 first.** Run `split` before any review (see Phase 5), and review from
+its output packet in this phase and the next. Test records arrive without AI
+screening proposals as well as without focal-event drafts. `split` refuses input
+that already has reviews.
+
 Read the complete saved article. Cue counts are not enough: a protest cue may be
 historical, quoted, negated, or unrelated to the article's primary development.
 
@@ -165,9 +170,6 @@ Every insufficient or unrelated record has an exclusion reason.
 **Goal.** For each usable article, the single primary development and every
 sentence that supports it.
 
-**Do P5.1 first.** Test records must be identified before review begins (see
-Phase 5).
-
 For each usable article: read the whole text, and decide the primary development.
 Edit the summary, select the supporting sentence IDs, and remove historical or
 irrelevant sentences. Confirm the event is protest-related. Record reviewer,
@@ -181,10 +183,11 @@ records also need human review, because automatic relevance can be wrong.
 label. Keep `ai_assisted`, with the human named as `reviewer`, when an AI draft
 was accepted unchanged. Phase 4 reports the two separately.
 
-**Test records are reviewed blind.** Use the `v2` template, with no AI draft and
-no model ranks, for every record in the test split. This mirrors the annotator's
-hidden machine score: a label that started from the system's own proposal cannot
-measure that system.
+**Test records are reviewed blind.** The packet from P5.1's `split` command has
+already stripped every AI draft from test records, so serve that packet. Do not
+open the model inspector on a test record before its review is saved. This
+mirrors the annotator's hidden machine score: a label that started from the
+system's own proposal cannot measure that system.
 
 **Accept when.** Reviewed records have `REVIEWED`, a non-empty human reviewer, a
 `label_source`, a non-empty `focal_event_summary`, and valid non-empty
@@ -268,19 +271,36 @@ manifest hashes verify, and `evaluate` passes on the frozen file.
 | `test` | final one-time evaluation |
 | `demo` | interactive demonstration subset |
 
-- Keep each normalized source URL, and each near-duplicate article (same
-  `content_hash`, or near-identical text), within one split.
-- Inspect source-host overlap and temporal coverage, and keep the protest cohorts
-  represented in every split.
-- **The 58 previously inspected pilot records never enter `test`.** They are
-  already anchored to model output; use them for calibration.
-- `evaluate` accepts only `pilot`, `train`, `dev`, `test`. Either keep `demo` as
-  a separate ID list, or extend the validator.
+    .venv/bin/python pipeline/10_extract_focal_events.py split \
+      --input data/evidence/focal_events/protest-review-300.ai-assisted.packet.jsonl \
+      --pilot data/evidence/focal_events/protest-pilot.screening.jsonl \
+      --output data/evidence/focal_events/protest-review-300.splits.packet.jsonl
+
+The command writes a new packet with `split` set on every record, plus a
+`.manifest.json` beside it. Reviewers then serve the new packet. Nothing is
+overwritten.
+
+- Same URL or final URL, same `content_hash`, same text, or word 5-shingle
+  Jaccard ≥ 0.8 puts articles in one group, and a group never spans splits.
+- **The 58 previously inspected pilot records never enter `test`.** Pass every
+  pilot file with `--pilot`. A pilot article's group becomes `pilot`, since a
+  duplicate of an inspected article has been inspected too.
+- The remaining groups are ordered by a seeded hash and fill `test` (20%), then
+  `dev` (20%), then `train`.
+- **Test records come out blind.** They keep only the frozen snapshot
+  (`SNAPSHOT_KEYS`), and every AI draft field is dropped. Train and dev keep
+  their drafts.
+- Protest cohort is a review label, so it cannot stratify a split made before
+  review. The manifest reports host overlap and month coverage now. Check cohort
+  balance after Phase 2, and re-split with a new seed only if it is badly skewed
+  and test review has not started.
+- `evaluate` accepts only `pilot`, `train`, `dev`, `test`. Keep `demo` as a
+  separate ID list, or extend the validator.
 - The test split is frozen once tuning begins.
 
-**Accept when.** A committed `docs/measurements/splits.md` reports counts per
-split and cohort, and states zero URL or content-hash overlap across splits. The
-split assignment file is hashed into the Phase 4 manifest.
+**Accept when.** A committed `docs/measurements/splits.md`, written from the
+manifest, reports counts per split and the duplicate groups. Cohort counts are
+added after Phase 2. The split manifest is hashed into the Phase 4 manifest.
 
 ---
 

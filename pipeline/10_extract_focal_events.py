@@ -8,9 +8,16 @@ from contextlib import redirect_stdout
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import asyncpg
-from focal_event_evaluation import annotation_template, evaluate, read_jsonl
+from focal_event_evaluation import (
+    annotation_template,
+    assign_splits,
+    blind_annotation,
+    evaluate,
+    read_jsonl,
+)
 from focal_event_screening import (
     DEFAULT_EVENTS_PATH,
     candidate_observations,
@@ -244,6 +251,82 @@ def extract(args: argparse.Namespace) -> dict:
     }
 
 
+def split(args: argparse.Namespace) -> dict:
+    manifest_path = args.output.with_suffix(".manifest.json")
+    if args.output.exists() or manifest_path.exists():
+        raise FileExistsError("Split output or manifest already exists")
+    if args.test_fraction + args.dev_fraction >= 1:
+        raise ValueError("Test and dev fractions must leave room for train")
+    records = read_jsonl(args.input)
+    # Splits are assigned before review. Blinding a test record resets its
+    # labels, which on a reviewed export would silently discard human work.
+    reviewed = [
+        record["article_id"]
+        for record in records
+        if record.get("review_status", "UNREVIEWED") != "UNREVIEWED"
+        or (record.get("eligibility") or {}).get("review_status", "UNREVIEWED") != "UNREVIEWED"
+        or (record.get("ner_annotation") or {}).get("review_status", "UNREVIEWED")
+        != "UNREVIEWED"
+    ]
+    if reviewed:
+        raise ValueError(f"Split runs before review; already reviewed: {reviewed[:5]}")
+    pilot_ids = {str(record["article_id"]) for path in args.pilot for record in read_jsonl(path)}
+    assignment, groups = assign_splits(
+        records, pilot_ids, args.seed, args.test_fraction, args.dev_fraction
+    )
+    output = []
+    hosts: dict[str, set[str]] = {}
+    months: dict[str, Counter] = {}
+    for record in records:
+        name = assignment[str(record["article_id"])]
+        meta = record.get("source_metadata") or {}
+        host = urlsplit(meta.get("url_key") or "").hostname
+        if host:
+            hosts.setdefault(name, set()).add(host)
+        observations = meta.get("gdelt_observations") or record.get("gdelt_observations") or []
+        days = [str(row["day"]) for row in observations if row.get("day")]
+        months.setdefault(name, Counter())[min(days)[:6] if days else "unknown"] += 1
+        record = blind_annotation(record) if name == "test" else dict(record)
+        record["split"] = name
+        output.append(record)
+    write_jsonl(args.output, output)
+    tuning_hosts = hosts.get("train", set()) | hosts.get("dev", set())
+    manifest = {
+        "schema_version": "focal-event-splits.v1",
+        "created_at": datetime.now(UTC).isoformat(),
+        "input": str(args.input.resolve()),
+        "input_sha256": file_hash(args.input),
+        "pilot_inputs": {str(path.resolve()): file_hash(path) for path in args.pilot},
+        "output": str(args.output),
+        "output_sha256": file_hash(args.output),
+        "seed": args.seed,
+        "test_fraction": args.test_fraction,
+        "dev_fraction": args.dev_fraction,
+        "counts": dict(Counter(assignment.values())),
+        "pilot_ids_matched": len(pilot_ids & assignment.keys()),
+        "blinded_test_articles": sum(record["split"] == "test" for record in output),
+        "duplicate_groups": groups,
+        "test_hosts": len(hosts.get("test", set())),
+        "test_hosts_shared_with_train_or_dev": len(hosts.get("test", set()) & tuning_hosts),
+        "first_gdelt_month_by_split": {name: dict(sorted(c.items())) for name, c in months.items()},
+        "assignment": assignment,
+    }
+    with manifest_path.open("x", encoding="utf-8") as handle:
+        json.dump(manifest, handle, ensure_ascii=False, indent=2, allow_nan=False)
+        handle.write("\n")
+    return {
+        key: manifest[key]
+        for key in ("output", "counts", "pilot_ids_matched", "blinded_test_articles")
+    } | {"manifest": str(manifest_path), "duplicate_groups": len(groups)}
+
+
+def fraction(value: str) -> float:
+    number = float(value)
+    if not 0 <= number < 1:
+        raise argparse.ArgumentTypeError("Fraction must be in [0, 1)")
+    return number
+
+
 def positive_integer(value: str) -> int:
     number = int(value)
     if number <= 0:
@@ -290,6 +373,13 @@ def parse_args() -> argparse.Namespace:
     audit = commands.add_parser("audit")
     audit.add_argument("--input", type=Path, required=True)
     audit.add_argument("--output", type=Path)
+    splitting = commands.add_parser("split")
+    splitting.add_argument("--input", type=Path, required=True)
+    splitting.add_argument("--pilot", type=Path, action="append", required=True)
+    splitting.add_argument("--seed", default="focal-splits-v1")
+    splitting.add_argument("--test-fraction", type=fraction, default=0.2)
+    splitting.add_argument("--dev-fraction", type=fraction, default=0.2)
+    splitting.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "screen" and not args.root_code:
         args.root_code = ["14"]
@@ -310,6 +400,8 @@ def main() -> None:
         records = [annotation_template(record) for record in read_jsonl(args.input)]
         write_jsonl(args.output, records)
         result = {"output": str(args.output), "articles": len(records)}
+    elif args.command == "split":
+        result = split(args)
     elif args.command == "evaluate":
         result = evaluate(read_jsonl(args.input), read_jsonl(args.annotations), args.split)
         if args.output:
