@@ -159,9 +159,27 @@ saved.
 The 21 extraction-rejected records stay explicit exclusions unless the source is
 re-acquired and extracts cleanly. Do not invent evidence for them.
 
-**Accept when.** All 300 records have `eligibility.review_status = REVIEWED`. Each
-has a human screening reviewer (not `Codex (AI)`) and a valid relevance value.
-Every insufficient or unrelated record has an exclusion reason.
+**Decided 2026-10-31: all screening is AI.** Claude screened all 300 records
+under `docs/screening-rubric.md`, recorded as reviewer `Claude (AI)`. The packet
+reviewers now use is `protest-review-300.screened.v2.packet.jsonl`. **No
+screening label is human-made.**
+- Pilot, train and dev: six agents read every article in full.
+- The 16 disagreements with Codex that most affected keep/exclude: a fresh
+  agent adjudicated them, seeing both labellings anonymised.
+- Test: two fresh agents screened blind, seeing only the rubric and their
+  articles.
+
+Method and results are in `docs/measurements/screening.md`.
+
+**Consequence for test.** The test split still measures the system against
+labels it never saw, but those labels are an AI's, not a person's. Any metric on
+`test` is "agreement with an independent AI screen", not accuracy against human
+judgement, until a person reviews the test records.
+
+**Accept when.** All 300 records have `eligibility.review_status = REVIEWED`
+(done), and every insufficient or unrelated record has an exclusion reason
+(done). Phase 4 reports every screening label as `Claude (AI)` unless a human
+has since changed it.
 
 ---
 
@@ -183,8 +201,9 @@ records also need human review, because automatic relevance can be wrong.
 label. Keep `ai_assisted`, with the human named as `reviewer`, when an AI draft
 was accepted unchanged. Phase 4 reports the two separately.
 
-**Test records are reviewed blind.** The packet from P5.1's `split` command has
-already stripped every AI draft from test records, so serve that packet. Do not
+**Test records are reviewed blind.** Serve `protest-review-300.screened.v2.packet.jsonl`.
+Its test records carry AI screening but no focal-event draft, because `split`
+stripped those. Do not
 open the model inspector on a test record before its review is saved. This
 mirrors the annotator's hidden machine score: a label that started from the
 system's own proposal cannot measure that system.
@@ -252,8 +271,11 @@ dataset `ai-assisted` or `weak` and keep it apart from the test set.
       --annotations data/evidence/focal_events/protest-review-300.gold.v1.annotations.jsonl \
       --output data/evidence/focal_events/protest-review-300.gold.v1.metrics.json
 
-Confirm `evaluate` accepts the 21 screening-only records against the 279-record
-prediction file before relying on this command.
+`evaluate` currently rejects the full 300-record packet with `Missing prediction
+for annotated article`, because the 21 extraction-rejected records have no
+prediction. `freeze`, and `evaluate` on the frozen file, must count
+screening-only records in the screening results without requiring a prediction
+for them.
 
 **Accept when.** `freeze` runs twice and produces byte-identical output, the
 manifest hashes verify, and `evaluate` passes on the frozen file.
@@ -620,7 +642,7 @@ Not scheduled. Revisit after Phase 12:
 | Decision | Needed by | Note |
 |---|---|---|
 | Where the review packet is shared | P0.1 | Must preserve bytes; hashes are checked |
-| Can unchanged AI drafts enter gold? | Phase 4 | Recommended: yes for train/dev with `ai_assisted` provenance; never for test |
+| Can unchanged AI drafts enter gold? | Phase 4 | Decided for screening (2026-10-31): all 300 screening labels are AI, `Claude (AI)`, test included. Still open for focal events and entities, where a human-reviewed test set is the remaining way to report accuracy against people |
 | `demo` as a split or a separate list | P5.1 | `evaluate` rejects unknown split values |
 | Local Postgres vs Supabase | Phase 12 | Handoff says stabilize locally first; the annotator already deploys against a Supabase `evidence` schema |
 | Seven relation types or fewer | Phase 10 | Decide from measured agreement |
