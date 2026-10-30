@@ -159,9 +159,18 @@ saved.
 The 21 extraction-rejected records stay explicit exclusions unless the source is
 re-acquired and extracts cleanly. Do not invent evidence for them.
 
-**Accept when.** All 300 records have `eligibility.review_status = REVIEWED`. Each
-has a human screening reviewer (not `Codex (AI)`) and a valid relevance value.
-Every insufficient or unrelated record has an exclusion reason.
+**Decided 2026-10-31: AI screening outside test.** The 252 pilot, train and dev
+records are screened by Claude under `docs/screening-rubric.md`, recorded as
+reviewer `Claude (AI)`. A human screens the 48 test records blind
+(`protest-review-300.test.packet.jsonl`), and decides the disagreements on
+`protest-review-300.screening-review-list.md`. See
+`docs/measurements/screening.md`.
+
+**Accept when.** All 300 records have `eligibility.review_status = REVIEWED`, and
+every insufficient or unrelated record has an exclusion reason. Every test
+record has a human screening reviewer. Every tier-1 item on the review list has
+been decided by a human. Train, dev and pilot screening is AI unless a human
+changed it, and Phase 4 reports it as such.
 
 ---
 
@@ -252,8 +261,11 @@ dataset `ai-assisted` or `weak` and keep it apart from the test set.
       --annotations data/evidence/focal_events/protest-review-300.gold.v1.annotations.jsonl \
       --output data/evidence/focal_events/protest-review-300.gold.v1.metrics.json
 
-Confirm `evaluate` accepts the 21 screening-only records against the 279-record
-prediction file before relying on this command.
+`evaluate` currently rejects the full 300-record packet with `Missing prediction
+for annotated article`, because the 21 extraction-rejected records have no
+prediction. `freeze`, and `evaluate` on the frozen file, must count
+screening-only records in the screening results without requiring a prediction
+for them.
 
 **Accept when.** `freeze` runs twice and produces byte-identical output, the
 manifest hashes verify, and `evaluate` passes on the frozen file.
@@ -620,7 +632,7 @@ Not scheduled. Revisit after Phase 12:
 | Decision | Needed by | Note |
 |---|---|---|
 | Where the review packet is shared | P0.1 | Must preserve bytes; hashes are checked |
-| Can unchanged AI drafts enter gold? | Phase 4 | Recommended: yes for train/dev with `ai_assisted` provenance; never for test |
+| Can unchanged AI drafts enter gold? | Phase 4 | Decided for screening (2026-10-31): AI labels for train/dev/pilot with `Claude (AI)` provenance; humans for test. Still open for focal events and entities |
 | `demo` as a split or a separate list | P5.1 | `evaluate` rejects unknown split values |
 | Local Postgres vs Supabase | Phase 12 | Handoff says stabilize locally first; the annotator already deploys against a Supabase `evidence` schema |
 | Seven relation types or fewer | Phase 10 | Decide from measured agreement |
