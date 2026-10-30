@@ -325,7 +325,7 @@ def split(args: argparse.Namespace) -> dict:
 # A frozen record is the article snapshot plus its final labels. Drafts and other
 # working fields (e.g. `ai_proposal`) stay in the input file, whose hash the
 # manifest records.
-FROZEN_KEYS = (*SNAPSHOT_KEYS, *blank_labels(), "model_evidence_inspections")
+FROZEN_KEYS = (*SNAPSHOT_KEYS, *blank_labels(), "core_sentence_id", "model_evidence_inspections")
 SPLITS = ("pilot", "train", "dev", "test")
 
 

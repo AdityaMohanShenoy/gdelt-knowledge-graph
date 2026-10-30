@@ -1036,3 +1036,28 @@ def test_cli_freeze_is_reproducible_strips_drafts_and_guards_the_gold_name(tmp_p
     for items, message in ((unreviewed, "not reviewed"), (moved, "split dev != test")):
         result = freeze(items, "d.weak.v1.jsonl")
         assert result.returncode != 0 and message in result.stderr
+
+
+def test_core_sentence_is_scored_against_a_single_target(nlp):
+    records = make_pipeline(nlp).process([article(1), article(2)])
+    first = [r["candidate_sentences"][0]["sentence_id"] for r in records]
+    others = [
+        next(s["sentence_id"] for s in r["sentences"] if s["sentence_id"] != top)
+        for r, top in zip(records, first, strict=True)
+    ]
+    hit = reviewed(records[0], support=sorted({first[0], others[0]}))
+    hit["core_sentence_id"] = first[0]
+    miss = reviewed(records[1], support=sorted({first[1], others[1]}))
+    miss["core_sentence_id"] = others[1]
+    metrics = evaluate(records, [hit, miss])
+    core = metrics["core_sentence"]
+    assert core["articles"] == 2 and core["top1_accuracy"] == 0.5
+    assert metrics["top1_accuracy"] == 1  # full support still counts both as hits
+    sizes = [len(r["sentences"]) for r in records]
+    assert core["baselines"]["random"]["top1_accuracy"] == sum(1 / n for n in sizes) / 2
+    assert core["baselines"]["position"]["articles"] == 2
+    assert evaluate(records, [reviewed(records[0])])["core_sentence"]["articles"] == 0
+    outside = copy.deepcopy(hit)
+    outside["supporting_sentence_ids"] = [others[0]]
+    with pytest.raises(ValueError, match="core sentence must be one of the supporting"):
+        evaluate(records, [outside])

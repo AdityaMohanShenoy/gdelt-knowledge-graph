@@ -558,7 +558,9 @@ def evaluate(records: list[dict], annotations: list[dict], split: str | None = N
     if len({gold["article_id"] for gold in annotations}) != len(annotations):
         raise ValueError("Duplicate annotation article IDs")
     counts: Counter[str] = Counter()
-    chance = dict.fromkeys(("top1", "top3", "support_sentences", "support_share"), 0.0)
+    chance = dict.fromkeys(
+        ("top1", "top3", "support_sentences", "support_share", "core_top1", "core_top3"), 0.0
+    )
     cohorts: dict[str, Counter] = {}
     screening_counts: dict[str, Counter] = {field: Counter() for field in ELIGIBILITY_LABELS}
     misses = []
@@ -661,6 +663,23 @@ def evaluate(records: list[dict], annotations: list[dict], split: str | None = N
             counts["protest_benchmark_top1_hits"] += top1
             counts["protest_benchmark_top3_hits"] += top3
         cohort["top3_hits"] += top3
+        # The core sentence is the one body sentence that best states the
+        # development. Full support covers about half an article, which saturates
+        # Top-k; a single target does not.
+        core = gold.get("core_sentence_id")
+        if core is not None:
+            if core not in support:
+                raise ValueError("The core sentence must be one of the supporting sentences")
+            counts["core_articles"] += 1
+            counts["core_top1_hits"] += bool(
+                candidates and candidates[0]["sentence_id"] == core and core in valid_candidate_ids
+            )
+            counts["core_top3_hits"] += core in valid_candidate_ids & {
+                sentence["sentence_id"] for sentence in candidates
+            }
+            core1, core3 = chance_hits(1, len(record["sentences"]))
+            chance["core_top1"] += core1
+            chance["core_top3"] += core3
         if not top3:
             misses.append(
                 {
@@ -677,6 +696,11 @@ def evaluate(records: list[dict], annotations: list[dict], split: str | None = N
             ordered = sorted(scored, key=lambda s: (-s[field], s["sentence_id"]))
             counts[f"{name}_top1_hits"] += bool(ordered and ordered[0]["sentence_id"] in support)
             counts[f"{name}_top3_hits"] += bool(support & {s["sentence_id"] for s in ordered[:3]})
+            if core is not None:
+                counts[f"{name}_core_articles"] += 1
+                ranked = [s["sentence_id"] for s in ordered]
+                counts[f"{name}_core_top1_hits"] += ranked[:1] == [core]
+                counts[f"{name}_core_top3_hits"] += core in ranked[:3]
         if gold.get("gold_entities") is None:
             continue
         ner = gold.get("ner_annotation")
@@ -789,6 +813,30 @@ def evaluate(records: list[dict], annotations: list[dict], split: str | None = N
                 "top3_recall": ratio(value["top3_hits"], value["articles"]),
             }
             for name, value in cohorts.items()
+        },
+        "core_sentence": {
+            "articles": counts["core_articles"],
+            "top1_accuracy": ratio(counts["core_top1_hits"], counts["core_articles"]),
+            "top3_recall": ratio(counts["core_top3_hits"], counts["core_articles"]),
+            "baselines": {
+                name: {
+                    "articles": counts[f"{name}_core_articles"],
+                    "top1_accuracy": ratio(
+                        counts[f"{name}_core_top1_hits"], counts[f"{name}_core_articles"]
+                    ),
+                    "top3_recall": ratio(
+                        counts[f"{name}_core_top3_hits"], counts[f"{name}_core_articles"]
+                    ),
+                }
+                for name in ("position", "headline")
+            }
+            | {
+                "random": {
+                    "articles": counts["core_articles"],
+                    "top1_accuracy": ratio(chance["core_top1"], counts["core_articles"]),
+                    "top3_recall": ratio(chance["core_top3"], counts["core_articles"]),
+                }
+            },
         },
         "top3_misses": misses,
     }

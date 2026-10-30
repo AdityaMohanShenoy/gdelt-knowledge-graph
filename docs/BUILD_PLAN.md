@@ -384,8 +384,12 @@ not scored):
   random ranking already gets Top-1 0.54.
 - **Most misses are a labelling artifact.** 11 of the 18 Top-1 misses are
   headline echoes, which the rubric excludes from support.
-- **Open before tuning:** the headline-echo policy, and a one-per-article
-  *core sentence* label as a harder target.
+- **Correction (v2, same day).** Against a one-per-article *core sentence*
+  target (`docs/core-sentence-rubric.md`), the model beats headline similarity:
+  core Top-1 0.70 vs 0.56 over non-test, p = 0.0023 paired. The "level with
+  headline" reading was an artifact of the saturated metric.
+- **Headline echoes stay excluded from gold.** Filtering them out is the first
+  ranker change to tune on dev, against core Top-1.
 
 ---
 
