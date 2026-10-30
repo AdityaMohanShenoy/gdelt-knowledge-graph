@@ -338,6 +338,25 @@ def test_metrics_include_missed_evidence_and_exact_ner_matches(nlp):
     assert metrics["ner"]["precision"] == metrics["ner"]["recall_full_article"] == 1
     assert metrics["evidence_validity"] == 1
     assert metrics["top3_misses"][0]["article_id"] == "2"
+    # Each gold set is one sentence, so the chance floor is the per-article
+    # 1/N and 3/N averaged; Top-k is only meaningful above it.
+    sizes = [len(r["sentences"]) for r in records]
+    assert metrics["gold_support"]["mean_sentences"] == 1
+    assert metrics["baselines"]["random"]["articles"] == 2
+    assert metrics["baselines"]["random"]["top1_accuracy"] == sum(1 / n for n in sizes) / 2
+    assert metrics["baselines"]["random"]["top3_recall"] == sum(
+        evaluation.chance_hits(1, n)[1] for n in sizes
+    ) / 2
+
+
+def test_chance_floor_rises_with_support_size():
+    chance = evaluation.chance_hits
+    assert chance(2, 10) == (0.2, 1 - 56 / 120)  # C(8,3)/C(10,3) misses all three
+    assert chance(10, 10) == (1.0, 1.0)
+    assert chance(1, 2) == (0.5, 1.0)  # fewer than three sentences: Top-3 sees all
+    assert chance(0, 0) == (0.0, 0.0)
+    floors = [chance(k, 20) for k in range(1, 21)]
+    assert floors == sorted(floors)
 
 
 def test_ner_reports_retrieval_losses_separately(nlp):

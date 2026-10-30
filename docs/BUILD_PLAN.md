@@ -353,6 +353,11 @@ Analyse errors on:
 - conflicting entity labels
 - long sentences and offset errors
 
+Report every Top-k beside `gold_support` and the `random` baseline from
+`evaluate`. The AI gold labels (Phase 2) use about 8 support sentences per
+article, so chance alone hits often, and a Top-k score means only its margin
+over that floor.
+
 **Accept when.** `docs/measurements/focal_baseline.md` reports dev-set metrics
 with input hashes and the error analysis. Test-set numbers are reported once,
 separately, and are not used for any later tuning.
