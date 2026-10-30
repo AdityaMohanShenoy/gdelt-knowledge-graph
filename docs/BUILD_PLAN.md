@@ -159,18 +159,27 @@ saved.
 The 21 extraction-rejected records stay explicit exclusions unless the source is
 re-acquired and extracts cleanly. Do not invent evidence for them.
 
-**Decided 2026-10-31: AI screening outside test.** The 252 pilot, train and dev
-records are screened by Claude under `docs/screening-rubric.md`, recorded as
-reviewer `Claude (AI)`. A human screens the 48 test records blind
-(`protest-review-300.test.packet.jsonl`), and decides the disagreements on
-`protest-review-300.screening-review-list.md`. See
-`docs/measurements/screening.md`.
+**Decided 2026-10-31: all screening is AI.** Claude screened all 300 records
+under `docs/screening-rubric.md`, recorded as reviewer `Claude (AI)`. The packet
+reviewers now use is `protest-review-300.screened.v2.packet.jsonl`. **No
+screening label is human-made.**
+- Pilot, train and dev: six agents read every article in full.
+- The 16 disagreements with Codex that most affected keep/exclude: a fresh
+  agent adjudicated them, seeing both labellings anonymised.
+- Test: two fresh agents screened blind, seeing only the rubric and their
+  articles.
 
-**Accept when.** All 300 records have `eligibility.review_status = REVIEWED`, and
-every insufficient or unrelated record has an exclusion reason. Every test
-record has a human screening reviewer. Every tier-1 item on the review list has
-been decided by a human. Train, dev and pilot screening is AI unless a human
-changed it, and Phase 4 reports it as such.
+Method and results are in `docs/measurements/screening.md`.
+
+**Consequence for test.** The test split still measures the system against
+labels it never saw, but those labels are an AI's, not a person's. Any metric on
+`test` is "agreement with an independent AI screen", not accuracy against human
+judgement, until a person reviews the test records.
+
+**Accept when.** All 300 records have `eligibility.review_status = REVIEWED`
+(done), and every insufficient or unrelated record has an exclusion reason
+(done). Phase 4 reports every screening label as `Claude (AI)` unless a human
+has since changed it.
 
 ---
 
@@ -192,8 +201,9 @@ records also need human review, because automatic relevance can be wrong.
 label. Keep `ai_assisted`, with the human named as `reviewer`, when an AI draft
 was accepted unchanged. Phase 4 reports the two separately.
 
-**Test records are reviewed blind.** The packet from P5.1's `split` command has
-already stripped every AI draft from test records, so serve that packet. Do not
+**Test records are reviewed blind.** Serve `protest-review-300.screened.v2.packet.jsonl`.
+Its test records carry AI screening but no focal-event draft, because `split`
+stripped those. Do not
 open the model inspector on a test record before its review is saved. This
 mirrors the annotator's hidden machine score: a label that started from the
 system's own proposal cannot measure that system.
@@ -632,7 +642,7 @@ Not scheduled. Revisit after Phase 12:
 | Decision | Needed by | Note |
 |---|---|---|
 | Where the review packet is shared | P0.1 | Must preserve bytes; hashes are checked |
-| Can unchanged AI drafts enter gold? | Phase 4 | Decided for screening (2026-10-31): AI labels for train/dev/pilot with `Claude (AI)` provenance; humans for test. Still open for focal events and entities |
+| Can unchanged AI drafts enter gold? | Phase 4 | Decided for screening (2026-10-31): all 300 screening labels are AI, `Claude (AI)`, test included. Still open for focal events and entities, where a human-reviewed test set is the remaining way to report accuracy against people |
 | `demo` as a split or a separate list | P5.1 | `evaluate` rejects unknown split values |
 | Local Postgres vs Supabase | Phase 12 | Handoff says stabilize locally first; the annotator already deploys against a Supabase `evidence` schema |
 | Seven relation types or fewer | Phase 10 | Decide from measured agreement |
