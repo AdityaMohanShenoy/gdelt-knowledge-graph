@@ -420,6 +420,15 @@ Retrieve candidate causes for each protest from canonical events (Phase 9). It i
 uv run python pipeline/22_retrieve_causes.py --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --mentions data/evidence/events/protest-review-300.mentions.v2.reviewed.jsonl --canonical data/evidence/events/protest-review-300.canonical.v2.jsonl --output data/evidence/events/protest-review-300.claims.v1.jsonl
 ```
 
+Conditions and remarks (Phase 9b). `apply` turns AI extraction into verbatim-span conditions (standing grievances, policies, shortages) and adds remarks to the event mentions. `pairs` and `build` merge conditions by judged pairs, as Phase 8 does for events. Retrieval v2 then adds conditions in effect on a protest's day and a 180-day window for events. Results are in `docs/measurements/conditions.md`.
+
+```bash
+uv run python pipeline/23_extract_conditions.py apply --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --mentions data/evidence/events/protest-review-300.mentions.v2.reviewed.jsonl --extraction data/evidence/events/protest-review-300.conditions-remarks.extraction.v1.jsonl --output data/evidence/events/protest-review-300.conditions.v1.jsonl
+uv run python pipeline/23_extract_conditions.py pairs --conditions data/evidence/events/protest-review-300.conditions.v1.jsonl --output data/evidence/events/protest-review-300.condition-pairs.v1.json
+uv run python pipeline/23_extract_conditions.py build --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --conditions data/evidence/events/protest-review-300.conditions.v1.jsonl --pairs data/evidence/events/protest-review-300.condition-pairs.v1.json --decisions data/evidence/events/protest-review-300.condition-pairs.v1.decisions.jsonl --output data/evidence/events/protest-review-300.canonical-conditions.v1.jsonl
+uv run python pipeline/22_retrieve_causes.py --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --mentions data/evidence/events/protest-review-300.conditions.v1.mentions.jsonl --canonical data/evidence/events/protest-review-300.canonical.v4.jsonl --conditions data/evidence/events/protest-review-300.canonical-conditions.v1.jsonl --condition-mentions data/evidence/events/protest-review-300.conditions.v1.jsonl --grievance-days 180 --output data/evidence/events/protest-review-300.claims.v3.jsonl
+```
+
 Stored inference results can be audited without model inference or annotations:
 
 ```bash

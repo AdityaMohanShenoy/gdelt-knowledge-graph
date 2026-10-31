@@ -24,6 +24,8 @@ THURSDAY = dt.date(2024, 3, 21)
         ("March 21", False, dt.date(2024, 3, 21), "high"),
         ("21 March", False, dt.date(2024, 3, 21), "high"),
         ("Sept. 16", False, dt.date(2023, 9, 16), "high"),  # past side of the report
+        ("16th February 2024", False, dt.date(2024, 2, 16), "high"),  # not "February 20"
+        ("10 July 2024", False, dt.date(2024, 7, 10), "high"),
         ("Monday", False, dt.date(2024, 3, 18), "medium"),
         ("Monday", True, dt.date(2024, 3, 25), "medium"),  # an announced Monday is ahead
         ("yesterday", False, dt.date(2024, 3, 20), "medium"),
