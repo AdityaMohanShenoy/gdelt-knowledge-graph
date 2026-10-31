@@ -104,3 +104,58 @@ def test_validation_rejects_any_field_that_is_not_the_article_text(nlp):
         corrupt(broken)
         with pytest.raises(ValueError):
             validate_mention(broken, text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Citizens have the right to protest peacefully.",
+        "The government should withdraw the order.",
+        "The blockade delayed trains for four hours.",
+        "The House met at 11 am.",
+    ],
+)
+def test_descriptive_prescriptive_and_consequence_uses_are_not_events(nlp, text):
+    assert mentions(nlp, text) == []
+
+
+def test_adjectival_participle_is_not_an_event(nlp):
+    found = mentions(nlp, "The agitating doctors met the Chief Secretary.")
+    assert [m["action"]["lemma"] for m in found] == ["meet"]
+
+
+def test_place_and_time_come_from_the_events_own_clause(nlp):
+    [clash] = mentions(nlp, "Police on Monday said the farmers clashed with forces in Ambala.")
+    assert clash["event_time"] is None  # Monday is when police spoke
+    assert [p["text"] for p in clash["locations"]] == ["Ambala"]
+    [strike] = mentions(nlp, "Delhi Chief Minister Atishi began a hunger strike on Friday.")
+    assert strike["locations"] == []  # Delhi names her office, not the place
+    [blockade] = mentions(nlp, "The blockade began on Monday and lasted 45-minute.")
+    assert blockade["event_time"]["text"] == "Monday"
+
+
+def test_pronoun_actors_stay_uncertain(nlp):
+    [march] = mentions(nlp, "He said they will march to Delhi.")
+    assert march["actors"] == [] and march["status"] == "announced"
+
+
+@pytest.mark.parametrize(
+    ("text", "action", "event_type"),
+    [
+        ("Police fired tear gas at the farmers.", "fired tear gas", "17"),
+        ("The police denied permission for the rally.", "denied permission", "17"),
+        ("Police registered a case against the workers.", "registered a case", "17"),
+        ("Farmers held talks with the ministers.", "held talks", "04"),
+        ("Farmers blocked the highway near Ludhiana.", "blocked the highway", "14"),
+        ("The protesters burnt an effigy of the Prime Minister.", "burnt an effigy", "14"),
+    ],
+)
+def test_state_actions_meetings_and_protest_acts(nlp, text, action, event_type):
+    [m] = mentions(nlp, text)
+    assert (m["action"]["text"], m["event_type"]) == (action, event_type)
+    assert "Minister" not in " ".join(a["text"] for a in m["actors"])
+
+
+def test_scheduled_event_is_announced_and_keeps_its_actor(nlp):
+    [rally] = mentions(nlp, "The union is scheduled to hold a rally next week.")
+    assert rally["status"] == "announced" and [a["text"] for a in rally["actors"]] == ["The union"]

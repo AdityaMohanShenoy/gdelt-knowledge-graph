@@ -3,39 +3,85 @@
 Rules over spaCy's parse of the stored sentences, so a mention can only name text
 that is in the article. A field the rules cannot fill stays empty, which means
 "uncertain"; it is never guessed. The extractor proposes; review decides.
+
+v2 changes come from the v1 dev review (docs/measurements/event_mentions.md):
+place and time are taken from the event's own clause, descriptive and prescriptive
+uses are not events, pronoun actors stay empty, and state actions, meetings and
+appeals are recognised.
 """
 
+import re
 from typing import Any
 
 from focal_events import ACTION_LEMMAS, REPORTING_LEMMAS, text_hash
 
 SCHEMA_VERSION = "event-mention.v1"
-EXTRACTOR_VERSION = "rules.v1"
+EXTRACTOR_VERSION = "rules.v2"
 
 PROTEST_VERBS = frozenset("agitate boycott gherao picket blockade besiege".split())
-EVENT_LEMMAS = ACTION_LEMMAS | PROTEST_VERBS
+STATE_VERBS = frozenset("lathicharge lathi-charge teargas adjourn appeal urge".split())
+GATHER_VERBS = frozenset("gather assemble congregate".split())  # only intransitive
+EVENT_LEMMAS = ACTION_LEMMAS | PROTEST_VERBS | STATE_VERBS | GATHER_VERBS
 # "staged a protest", "called a bandh": the event is the noun, the verb only carries it.
 # "stag" is in the list because spaCy lemmatises "staged" to "stag".
-LIGHT_VERBS = frozenset("stage stag hold call launch observe organise organize begin start".split())
+LIGHT_VERBS = frozenset(
+    "stage stag hold call launch observe organise organize begin start resume".split()
+)
 PROTEST_NOUNS = frozenset(
     "protest rally march strike bandh hartal dharna demonstration agitation sit-in blockade "
     "gherao boycott fast walkout picket roko procession vigil satyagraha".split()
 )
-INTENT_LEMMAS = frozenset("plan threaten decide vow warn announce call".split())
+MEETING_NOUNS = frozenset("talk talks meeting negotiation negotiations dialogue".split())
+# A protest noun as subject is an event only when the verb says it happened:
+# "protests erupted", not "the blockade delayed trains".
+ONSET_VERBS = frozenset(
+    "erupt begin start continue enter end spread intensify escalate turn break resume "
+    "mark take".split()
+)
+INTENT_LEMMAS = frozenset(
+    "plan threaten decide vow warn announce call schedule set prepare propose agree".split()
+)
+PRESCRIPTIVE_MODALS = frozenset("should must ought might may could".split())
+INSTITUTIONS = frozenset("house assembly parliament session".split())
+# verb + object pairs whose meaning lives in the object: "denied permission",
+# "registered a case", "fired tear gas", "sealed the border".
+OBJECT_EVENTS = {
+    ("deny", "permission"): "17",
+    ("register", "case"): "17",
+    ("register", "fir"): "17",
+    ("file", "fir"): "17",
+    ("fire", "gas"): "17",
+    ("fire", "shell"): "17",
+    ("use", "gas"): "17",
+    ("seal", "border"): "17",
+    ("impose", "curfew"): "17",
+    ("impose", "section"): "17",
+    ("impose", "restriction"): "17",
+    ("burn", "effigy"): "14",
+    ("submit", "memorandum"): "02",
+    ("block", "road"): "14",
+    ("block", "highway"): "14",
+    ("block", "track"): "14",
+    ("block", "traffic"): "14",
+    ("close", "shop"): "14",
+    ("close", "market"): "14",
+}
 
-# CAMEO root codes, only where the verb settles it; anything else stays None.
+# CAMEO root codes, only where the words settle it; anything else stays None.
 CAMEO_ROOT = {
     **dict.fromkeys(
         "protest demonstrate march rally strike agitate boycott picket gherao blockade".split(),
         "14",
     ),
     **dict.fromkeys(PROTEST_NOUNS, "14"),
-    **dict.fromkeys("arrest detain ban".split(), "17"),
+    **dict.fromkeys(MEETING_NOUNS, "04"),
+    **dict.fromkeys("arrest detain ban lathicharge lathi-charge teargas".split(), "17"),
     **dict.fromkeys("attack kill injure".split(), "18"),
+    **dict.fromkeys("demand appeal urge".split(), "02"),
     "clash": "19",
-    "demand": "02",
     "meet": "04",
     "reject": "12",
+    "deploy": "15",
 }
 
 # NER labels to the store's entities.kind, in one place (BUILD_PLAN Phase 7).
@@ -51,6 +97,11 @@ STORE_ENTITY_KIND = {
 }
 PLACE_LABELS = frozenset({"GPE", "LOC", "FAC"})
 TIME_LABELS = frozenset({"DATE", "TIME"})
+DURATION = re.compile(
+    r"^(\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|several|few|many)"
+    r"[\s-]+(minute|hour|day|week|month|year)s?(-long)?$|-long$|-day$|-hour$",
+    re.IGNORECASE,
+)
 
 
 def span(doc_span: Any, base: int, kind: str | None = None) -> dict:
@@ -77,18 +128,28 @@ def negated(*tokens: Any) -> bool:
     )
 
 
-def find_actions(doc: Any) -> list[tuple[Any, Any]]:
-    """(verb, event word) pairs. The event word is the verb, or the protest noun it carries."""
+def not_an_event(verb: Any) -> bool:
+    """Descriptive, purposive or prescriptive uses of an event word."""
+    if verb.dep_ == "amod" or (verb.dep_ == "acl" and verb.i < verb.head.i):
+        return True  # "protesting farmers"
+    has_to = any(c.dep_ == "aux" and c.lower_ == "to" for c in verb.children)
+    if has_to and verb.dep_ in {"advcl", "acl"}:
+        return True  # "gathered to demonstrate support", "the right to protest"
+    if any(c.tag_ == "MD" and c.lower_ in PRESCRIPTIVE_MODALS for c in verb.children):
+        return True  # "should withdraw", "may protest"
+    subjects = [c.lemma_.lower() for c in verb.children if c.dep_ == "nsubj"]
+    return verb.lemma_.lower() == "meet" and any(s in INSTITUTIONS for s in subjects)
+
+
+def find_actions(doc: Any) -> list[tuple[Any, Any, str | None]]:
+    """(verb, event word, event type). The event word is the verb, or the noun it carries."""
     actions = []
     for token in doc:
         lemma = token.lemma_.lower()
-        if token.pos_ != "VERB" or lemma in REPORTING_LEMMAS:
+        if token.pos_ != "VERB" or lemma in REPORTING_LEMMAS or not_an_event(token):
             continue
-        carried = [
-            child
-            for child in token.children
-            if child.dep_ in {"dobj", "attr"} and child.lemma_.lower() in PROTEST_NOUNS
-        ] + [
+        objects = [c for c in token.children if c.dep_ in {"dobj", "attr"}]
+        carried = [c for c in objects if c.lemma_.lower() in PROTEST_NOUNS | MEETING_NOUNS] + [
             grandchild
             for child in token.children
             if child.dep_ == "prep" and child.lower_ == "on"
@@ -100,26 +161,43 @@ def find_actions(doc: Any) -> list[tuple[Any, Any]]:
             for child in token.children
             if child.dep_ in {"nsubj", "nsubjpass"} and child.lemma_.lower() in PROTEST_NOUNS
         ]
+        paired = [
+            (c, OBJECT_EVENTS[(lemma, c.lemma_.lower())])
+            for c in objects + [c for c in token.children if c.dep_ == "nsubjpass"]
+            if (lemma, c.lemma_.lower()) in OBJECT_EVENTS
+        ]
+        walked_out = lemma == "walk" and any(c.lower_ == "out" for c in token.children)
         if lemma in LIGHT_VERBS and carried:
-            actions.append((token, carried[0]))
+            noun = carried[0]
+            actions.append((token, noun, CAMEO_ROOT.get(noun.lemma_.lower())))
         elif carried and lemma in {"go", "sit", "be"}:
-            actions.append((token, carried[0]))  # "went on strike", "sat on dharna"
-        elif subjects:
-            actions.append((token, subjects[0]))  # "protests erupted", "the bandh continued"
+            actions.append((token, carried[0], "14"))  # "went on strike", "sat on dharna"
+        elif subjects and lemma in ONSET_VERBS:
+            actions.append((token, subjects[0], "14"))  # "protests erupted"
+        elif paired:
+            actions.append((token, paired[0][0], paired[0][1]))
+        elif walked_out:
+            actions.append((token, token, "14"))
+        elif lemma in GATHER_VERBS:
+            if not objects:
+                actions.append((token, token, None))
         elif lemma in EVENT_LEMMAS:
-            actions.append((token, token))
+            actions.append((token, token, CAMEO_ROOT.get(lemma)))
     # "decided to march" is one announced march, not a separate "decided" event.
-    heads = {verb.head.i for verb, _ in actions if verb.dep_ == "xcomp"}
+    heads = {verb.head.i for verb, _, _ in actions if verb.dep_ == "xcomp"}
     return [
-        (verb, event)
-        for verb, event in actions
-        if not (verb.i in heads and verb.lemma_.lower() in INTENT_LEMMAS)
+        action
+        for action in actions
+        if not (action[0].i in heads and action[0].lemma_.lower() in INTENT_LEMMAS)
     ]
 
 
 def actors_of(verb: Any, event: Any) -> list[Any]:
     # spaCy builds a new Token object on every access, so compare positions, not identity.
-    if event.i != verb.i:  # nominal event: "farmers' protest", "protest by farmers"
+    found: list[Any] = []
+    # Nominal event, "farmers' protest" or "protest by farmers". Only for protest and
+    # meeting nouns: in "burnt an effigy of the PM" the PM is no actor.
+    if event.i != verb.i and event.lemma_.lower() in PROTEST_NOUNS | MEETING_NOUNS:
         found = [c for c in event.children if c.dep_ == "poss"] + [
             g
             for c in event.children
@@ -127,14 +205,15 @@ def actors_of(verb: Any, event: Any) -> list[Any]:
             for g in c.children
             if g.dep_ == "pobj"
         ]
-        if found:
-            return found
-    if any(c.dep_ == "nsubjpass" for c in verb.children):
-        return [g for c in verb.children if c.dep_ == "agent" for g in c.children]
-    subjects = [c for c in verb.children if c.dep_ == "nsubj" and c.i != event.i]
-    if not subjects and verb.dep_ in {"xcomp", "conj"}:  # "decided to protest"
-        subjects = [c for c in verb.head.children if c.dep_ == "nsubj"]
-    return subjects
+    if not found:
+        if any(c.dep_ == "nsubjpass" for c in verb.children):
+            found = [g for c in verb.children if c.dep_ == "agent" for g in c.children]
+        else:
+            found = [c for c in verb.children if c.dep_ == "nsubj" and c.i != event.i]
+            if not found and verb.dep_ in {"xcomp", "conj"}:  # "decided to protest"
+                found = [c for c in verb.head.children if c.dep_ in {"nsubj", "nsubjpass"}]
+    # A bare pronoun names nobody; leave the actor uncertain rather than wrong.
+    return [t for t in found if t.pos_ != "PRON"]
 
 
 def targets_of(verb: Any, event: Any) -> list[Any]:
@@ -147,7 +226,34 @@ def targets_of(verb: Any, event: Any) -> list[Any]:
             for g in c.children
             if g.dep_ == "pobj"
         ]
-    return found
+    return [t for t in found if t.pos_ != "PRON"]
+
+
+def own_clause(verb: Any, event: Any, others: set[int]) -> set[int]:
+    """Tokens governed by this event and not by another event verb inside it."""
+    scope = set()
+    for head in {verb.i, event.i}:
+        for token in verb.doc[head].subtree:
+            ancestor = token
+            while ancestor.i not in (verb.i, event.i):
+                if ancestor.i in others or ancestor.head.i == ancestor.i:
+                    break
+                ancestor = ancestor.head
+            else:
+                scope.add(token.i)
+    return scope
+
+
+def clause_entities(doc: Any, scope: set[int], labels: frozenset) -> list[Any]:
+    return [
+        e
+        for e in doc.ents
+        if e.label_ in labels
+        and e.root.i in scope
+        # "Delhi Chief Minister": a place naming someone's title, not where it happened.
+        and e.root.dep_ not in {"compound", "amod", "poss", "nmod"}
+        and not DURATION.search(e.text.strip())
+    ]
 
 
 def entity_kind(doc_span: Any) -> str | None:
@@ -159,28 +265,30 @@ def entity_kind(doc_span: Any) -> str | None:
 
 def extract_sentence(doc: Any, sentence: dict) -> list[dict]:
     base = sentence["start_char"]
-    places = [span(e, base, "place") for e in doc.ents if e.label_ in PLACE_LABELS]
-    times = [span(e, base) for e in doc.ents if e.label_ in TIME_LABELS]
+    actions = find_actions(doc)
+    verbs = {verb.i for verb, _, _ in actions}
     mentions = []
-    for verb, event in find_actions(doc):
+    for verb, event, event_type in actions:
         if negated(verb, event):
             continue
         announced = any(c.tag_ == "MD" for c in verb.children) or (
             verb.dep_ == "xcomp" and verb.head.lemma_.lower() in INTENT_LEMMAS
         )
-        lemma = event.lemma_.lower()
+        scope = own_clause(verb, event, verbs - {verb.i})
+        places = clause_entities(doc, scope, PLACE_LABELS)
+        times = clause_entities(doc, scope, TIME_LABELS)
         action = doc[min(verb.i, event.i) : max(verb.i, event.i) + 1]
         mentions.append(
             {
                 "token": verb.i,
-                "action": {**span(action, base), "lemma": lemma},
+                "action": {**span(action, base), "lemma": event.lemma_.lower()},
                 "actors": [
                     span(subtree(t), base, entity_kind(subtree(t))) for t in actors_of(verb, event)
                 ],
                 "targets": [span(subtree(t), base) for t in targets_of(verb, event)],
-                "locations": places,
-                "event_time": times[0] if times else None,
-                "event_type": CAMEO_ROOT.get(lemma),
+                "locations": [span(e, base, "place") for e in places],
+                "event_time": span(times[0], base) if times else None,
+                "event_type": event_type,
                 "status": "announced" if announced else "asserted",
             }
         )
