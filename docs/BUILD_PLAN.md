@@ -610,6 +610,21 @@ the taxonomy from the measured agreement.
 **Accept when.** Every judged pair persists with its reviewer and timestamp,
 rejected candidates are queryable as a set, and agreement is reported per type.
 
+**Done 2026-10-31 (`docs/measurements/causal_edges.md`), with AI annotators.**
+- **Coverage.** All 1,101 claims are judged: 156 accepted edges (91 from
+  conditions) and 945 rejections with reasons. Every field above is stored, and
+  the machine fields are null until a model exists.
+- **JSONL first.** Loading into `claims`/`annotations`, and human review in the
+  annotator, happen in Phase 12.
+- **Agreement.** On 283 double-annotated claims, accept/reject κ 0.93 and
+  relation κ 0.88. This is AI-to-AI, so it measures consistency.
+- **Taxonomy: seven types become five.** CONTRIBUTES_TO merges into MOTIVATES
+  (specific agreement 0.50), and ENABLES is dropped (never used). TRIGGERS and
+  ESCALATES were never confused, so both stay. Solidarity protests need a named
+  home.
+- **Fresh-seed check of the tuned retrieval.** On the 43 untuned protests,
+  precision is 14.2% (the same as on the tuning seeds) and recall is 0.83–0.87.
+
 ---
 
 ## Phase 11 — Recursive expansion
