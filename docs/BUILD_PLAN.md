@@ -448,9 +448,15 @@ from its pinned text, contains the event it claims, and no field is unsupported.
 - **Rules v2 (same day) is the current extractor.** On a fresh train sample,
   blinded against v1, precision rose from 0.78 to 0.88. Place and time are
   right 86% and 88% of the time when filled, up from 72% and 76%.
-- **Recall stayed near 0.5, the rules' ceiling.** The acceptance check is still
-  not met. The way forward is a decision: a review step that confirms mentions
-  and adds missed ones, or a learned extractor for recall.
+- **Recall stayed near 0.5, the rules' ceiling.** No money was to be spent, so
+  a review step was chosen over a learned extractor.
+- **Review step: accepted on an AI audit.** AI reviewers confirmed, corrected
+  and completed the proposals (`20_extract_events.py apply-review`), giving 911
+  reviewed events over 139 articles, with 427 added by review.
+- **Audit of 20 random articles:** 120/121 events real, 0.8% of span fields
+  wrong, estimated recall 0.86.
+- **The reviewed event set is the input to Phase 8.** A human hand-check of a
+  sample is still outstanding.
 
 ---
 

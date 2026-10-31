@@ -159,3 +159,43 @@ def test_state_actions_meetings_and_protest_acts(nlp, text, action, event_type):
 def test_scheduled_event_is_announced_and_keeps_its_actor(nlp):
     [rally] = mentions(nlp, "The union is scheduled to hold a rally next week.")
     assert rally["status"] == "announced" and [a["text"] for a in rally["actors"]] == ["The union"]
+
+
+def test_review_keeps_only_verbatim_spans_and_records_rejections(nlp):
+    from event_mentions import apply_review
+
+    text = "Police arrested 220 students in Howrah. The union called a bandh on Friday."
+    gold = article(text, [
+        "Police arrested 220 students in Howrah.", "The union called a bandh on Friday."
+    ], core=2)
+    proposals = extract_article(nlp, gold)
+    by_sentence = {m["sentence_id"]: m["event_mention_id"] for m in proposals}
+    review = {
+        "mentions": [
+            {"mention_id": by_sentence[1], "verdict": "accept", "actors": ["Police"],
+             "targets": ["220 students"], "locations": ["Howrah", "Kolkata"],
+             "event_time": None, "event_type": "17", "status": "asserted"},
+            {"mention_id": by_sentence[2], "verdict": "reject", "reason": "test rejection",
+             "actors": [], "targets": [], "locations": [], "event_time": None,
+             "event_type": None, "status": None},
+        ],
+        "added": [
+            {"sentence_id": 2, "action": "called a bandh", "actors": ["The union"],
+             "targets": [], "locations": [], "event_time": "Friday", "event_type": "14",
+             "status": "announced"},
+            {"sentence_id": 2, "action": "invented phrase", "actors": [], "targets": [],
+             "locations": [], "event_time": None, "event_type": None, "status": "asserted"},
+        ],
+    }
+    rows, dropped = apply_review(gold, proposals, review, "Claude (AI)")
+    assert dropped == 2  # "Kolkata" is not in the sentence; the invented action is not either
+    arrest = next(r for r in rows if r["sentence_id"] == 1)
+    # Only the unverifiable "Kolkata" differed, and it was dropped, so nothing changed.
+    assert arrest["review_status"] == "REVIEWED" and not arrest["corrected"]
+    assert [p["text"] for p in arrest["locations"]] == ["Howrah"]
+    assert next(r for r in rows if r["review_status"] == "REJECTED")["review_reason"]
+    [added] = [r for r in rows if r["origin"] == "review_added"]
+    assert added["focal"] and added["event_time"]["text"] == "Friday"
+    assert text[added["action"]["start"] : added["action"]["end"]] == "called a bandh"
+    with pytest.raises(ValueError, match="cover exactly"):
+        apply_review(gold, proposals, {**review, "mentions": review["mentions"][:1]}, "x")

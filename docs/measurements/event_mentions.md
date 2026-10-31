@@ -1,15 +1,98 @@
-# Phase 7 — Atomic event mentions (rules v1 and v2)
+# Phase 7 — Atomic event mentions
 
-**Status: rules v2 is the current extractor, and the acceptance check is not
-yet met.**
-- **v2 against v1,** on a fresh train sample with blinded review: precision
-  0.88 (v1 0.78), estimated recall about 0.5 (unchanged).
-- **Field accuracy when filled:** place 0.86, time 0.88.
-- **Mentions remain `UNREVIEWED` proposals.** The extractor proposes; review
-  decides.
+**Status: accepted on an AI audit (2026-10-31).** The extractor proposes events
+(rules v2) and a review step confirms, corrects and completes them. The result
+is the reviewed event set, `protest-review-300.mentions.v2.reviewed.jsonl`:
+- **Size:** 911 reviewed events over 139 articles.
+- **Audit:** an independent audit of 20 random articles found 120 of 121 events
+  real, 0.8% of span fields wrong, and estimated recall 0.86.
+- **Provenance:** every label is AI-made (`Claude (AI)`). A human hand-check is
+  still outstanding.
 
-See "Rules v2" and "Where Phase 7 goes from here" below. The v1 sections are
-kept as the record that v2 was built against.
+## Review step
+
+**Why.** Rules v2 tops out near 0.88 precision and 0.5 recall (see below).
+Review supplies the recall, at no cost: the reviewers are subagents, with no
+paid API.
+
+**How.** Under `docs/event-review-step-rubric.md`, six AI reviewers read every
+article. For each rule proposal they could accept it, correcting its fields, or
+reject it with a reason. They then added every missed event. All field values
+and added actions had to be quoted verbatim from the sentence.
+
+**Applying it.** `20_extract_events.py apply-review` (`apply_review` in
+`event_mentions.py`):
+- locates every quoted value in its sentence, and **drops anything not found
+  verbatim**; 0 were dropped in this run;
+- keeps rejected proposals as `REJECTED` with their reason;
+- marks corrected proposals;
+- gives added events new IDs, with `origin: review_added`;
+- re-attaches the focal flag;
+- validates every span against the pinned text.
+
+| File | SHA-256 |
+|---|---|
+| `data/evidence/events/protest-review-300.mentions.v2.review.jsonl` (reviewer output) | `55f164c2c222a22ba3f6fe277dea38ce934c28418c9a0c1b9650b7a3a878acae` |
+| `data/evidence/events/protest-review-300.mentions.v2.reviewed.jsonl` (**reviewed event set**) | `2c69bca0336a62bdf4cd3c95f692f0eeb36d559f286a76fcb060d8780650b46f` |
+| `data/evidence/events/protest-review-300.mentions.v2.reviewed.manifest.json` | `a7792b7be5379b41a4518fa8959e8cb39e7e790d217cae0bdde57d25f1bc7437` |
+| `data/evidence/events/protest-review-300.mentions.v2.reviewed.audit.jsonl` | `03538e3e4a8d0ad475c7fbab44d5a73bf62dada890bc85068bc24926b0cf4371` |
+| `data/evidence/events/protest-review-300.mentions.v2.reviewed.audit-key.json` | `9b72d02a62dc15bad829329be05f41fbc0663072a5a9f704e321ca1119ebd6fe` |
+| `docs/event-review-step-rubric.md` | `4e9ce1981f0bb7886af0638c9d149400ce5ced4bf13b2a31b8795edaa5600b38` |
+
+**Result (139 articles).**
+- **911 reviewed events:**
+  - 484 rule proposals accepted, of which 391 had a field corrected
+  - **427 events added** by review
+  - 286 proposals rejected, mostly duplicates of the same development, then
+    non-events and background
+- **Fill rates:** actor 77% (rules 50%), target 49%, place 41%, time 37%, type
+  85%.
+- **Event types:** 14 protest 330, 02 demand 167, 17 coerce 126, 04 meet 62,
+  18 assault 38, 15 force 23, 12 reject 14, 19 fight 10, and untyped 141 (mostly
+  court and government decisions).
+- **Focal event confirmed in 128 of 139 articles.** In the other 11 the
+  reviewers recorded it in a different, fuller sentence, following the "add
+  once, where stated most fully" rule. A field-less focal seed stays in the
+  core sentence for Phase 8 to link.
+
+### Audit (acceptance check)
+
+Two fresh AI auditors judged every reviewed event in **20 seeded-random
+articles** (7 pilot, 8 train, 1 dev, 4 test) under
+`docs/event-mention-review-rubric.md`, with two extra rules: a bare pronoun is
+wrong, and duplicates are noted. Event IDs were neutralised so the auditors
+could not tell rule events from added ones.
+
+| Measure | Result |
+|---|---:|
+| Real events | **120 / 121 (0.99)** |
+| Estimated recall (found / found + missed) | **0.86** (120/140) |
+| Span fields wrong (actor, target, place, time) | **2 of 240 filled (0.008)** |
+| Correct when filled: actor / target / place / time | 1.00 / 0.96 / 1.00 / 1.00 |
+| Event type wrong | 3 of 107 typed |
+| Status wrong | 1 of 120 |
+| Duplicates noted | 1 |
+
+**By origin, unblinded.** 67 of 67 rule events and 53 of 54 added events are
+real. The one "not an event" is a police deployment typed 15. The audit rubric
+predates code 15, and the other auditor accepted the same kind of event.
+
+**Remaining issues.**
+- **Labels.** Filing a petition was typed 17, calling off a protest 14, and
+  things rather than parties appear as targets.
+- **Empty fields.** Place and time are often empty when they sit in the
+  dateline or a neighbouring sentence. The span rule allows only the event's own
+  sentence, so this costs coverage, not correctness.
+- **Missed events (20).** Background institutional decisions and demands
+  carried by slogans.
+- **Reviewer inconsistency on past events.** Some reviewers kept dated pre-2024
+  incidents as events; others rejected them as background. Phase 11 stops at
+  2024-01-01, so filter by date downstream rather than trusting either choice.
+
+**Against the plan's check.** Every event's evidence span contains the event it
+claims (120/121), and no field is unsupported: every field is verbatim text at
+its offsets, enforced in code. **The audit is AI, not a hand-check.** Treat
+acceptance as provisional until a person checks a sample.
 
 ## Rules v1: what it does
 
@@ -206,15 +289,8 @@ both versions were scored on the same judgements.
 3. **The acceptance check is still not met.** Precision is 0.88, and 12% of
    mentions are still not events.
 
-## Where Phase 7 goes from here
+## Where Phase 7 went from here
 
-The rules extractor (v2) produces span-grounded proposals with about 88%
-precision and about 50% recall. Two ways forward:
-
-- **Accept the rules as proposals and add a review step.** Every mention is
-  `UNREVIEWED`. Review can confirm or reject mentions, and add the missed
-  events, before Phase 8 merges them. That keeps the "ML proposes, review
-  decides" rule, but review becomes the main source of recall.
-- **Change the extractor.** Recall beyond about 0.5 likely needs a learned
-  model (an LLM with strict span validation, or a fine-tuned tagger), not more
-  rules. That reopens the API decision made for Phase 7.
+**Resolved 2026-10-31:** the review step, at no cost, with no paid API. See
+"Review step" at the top. A learned extractor remains an option if the
+corpus grows past what review can cover.
