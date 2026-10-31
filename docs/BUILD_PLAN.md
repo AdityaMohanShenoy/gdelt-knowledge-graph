@@ -540,6 +540,24 @@ serves candidates across seeds rather than draining one seed first.
   - extract statements as events
   - add a longer grievance window
 
+**Phase 9b — conditions, remarks, grievance window. Done 2026-10-31
+(`docs/measurements/conditions.md`).**
+- **Conditions.** 244 condition mentions (verbatim spans, holders, places,
+  validity) merge into 200 canonical conditions by judged pairs. 213 remarks
+  (CAMEO 01, 11, 12, 13) join the event mentions.
+- **Retrieval v2.** Conditions in effect on the seed's day, plus events up to
+  180 days back under a stricter rule. 1,915 claims, about 30 per seed.
+- **Recall on the same 20 seeds: 0.92 (36 / 39), up from 0.46.** 16 of the 18
+  recovered causes come through conditions. This is an upper estimate: the
+  judges knew which causes to look for, and all labels are AI.
+- **Costs and limits.**
+  - Precision of new candidates is 11% (conditions 27%, events 5%).
+  - Condition extraction precision is 73%, mostly demands mis-recorded as
+    conditions.
+  - Almost no condition states when it began or ended.
+- **Date fix.** "May 2024" no longer parses as May 20. Current artifacts are
+  canonical v4 and claims v3.
+
 ---
 
 ## Phase 10 — Causal annotation
@@ -746,6 +764,9 @@ preserved rejections, or edge agreement in Phase 10.
 optional. Phase 9 measured that about three quarters of the causes articles name
 are standing conditions or grievances (`docs/measurements/causal_candidates.md`).
 Schedule them before Phase 10 depends on recall.
+
+**Done 2026-10-31 (Phase 9b).** Condition nodes and a 180-day grievance stratum
+are built. The finer structural strata are still open.
 
 Not scheduled. Revisit after Phase 12:
 - condition nodes and the four timescale strata (structural causes such as

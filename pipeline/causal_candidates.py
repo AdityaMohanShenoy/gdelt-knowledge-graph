@@ -15,6 +15,7 @@ import hashlib
 import re
 
 WINDOW_DAYS = 7
+GRIEVANCE_DAYS = 180  # a longer stratum, for triggers weeks or months back
 SIMILARITY_FLOOR = 0.45  # proposes a candidate; never a confidence
 
 
@@ -64,7 +65,18 @@ def signals(seed: dict, cause: dict, similarity: float) -> dict:
     }
 
 
-def proposed(found: dict) -> bool:
+def proposed(found: dict, near: bool = True) -> bool:
+    """Any one signal proposes a near candidate. Beyond the 7-day window one weak
+    signal would propose most of the corpus, so a far one needs the same article,
+    or similar wording together with a shared name, actor or place."""
+    if not near:
+        return bool(
+            found["same_article"]
+            or (
+                found["similarity"] >= SIMILARITY_FLOOR
+                and (found["actors"] or found["locations"] or found["shared_names"])
+            )
+        )
     return bool(
         found["same_article"]
         or found["actors"]
@@ -72,6 +84,24 @@ def proposed(found: dict) -> bool:
         or found["shared_names"]
         or found["similarity"] >= SIMILARITY_FLOOR
     )
+
+
+def condition_node(condition: dict, sentences: list[str]) -> dict:
+    """A canonical condition in the shape retrieval reads: holders stand in for actors,
+    and its validity window for its time range. It is in effect at a seed when the
+    window covers the seed's day."""
+    return {
+        "canonical_event_id": condition["canonical_condition_id"],
+        "cause_kind": "condition",
+        "event_type": None,
+        "actors": condition["holders"],
+        "targets": [],
+        "locations": condition["locations"],
+        "best_time": condition["valid_from"],
+        "time_range": [condition["valid_from"], condition["valid_to"]],
+        "supporting_sources": condition["supporting_sources"],
+        "sentences": sentences,
+    }
 
 
 def retrieval_score(found: dict) -> float:
@@ -87,18 +117,24 @@ def retrieval_score(found: dict) -> float:
     )
 
 
-def claim(seed: dict, cause: dict, found: dict, evidence: dict) -> dict:
+def claim(
+    seed: dict, cause: dict, found: dict, evidence: dict, retriever: str = "text-retrieval.v1"
+) -> dict:
     key = f"{seed['canonical_event_id']}<-{cause['canonical_event_id']}"
     return {
         "claim_id": "cl:" + hashlib.sha256(key.encode()).hexdigest()[:16],
         "effect_event_id": seed["canonical_event_id"],
         "cause_event_id": cause["canonical_event_id"],
-        "lag_days": (day(seed["best_time"]) - day(cause["best_time"])).days,
+        "cause_kind": cause.get("cause_kind", "event"),
+        # A condition's start is usually the assumed fallback, so it has no lag.
+        "lag_days": None
+        if cause.get("cause_kind") == "condition"
+        else (day(seed["best_time"]) - day(cause["best_time"])).days,
         "signals": found,
         "retrieval_score": retrieval_score(found),
         "evidence": evidence,
         "verdict": "unreviewed",
-        "retriever": "text-retrieval.v1",
+        "retriever": retriever,
     }
 
 

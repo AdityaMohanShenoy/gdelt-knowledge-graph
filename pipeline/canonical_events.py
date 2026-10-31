@@ -29,9 +29,12 @@ MONTHS = {
     "sept": 9,
 }
 MONTH = "|".join(sorted(MONTHS, key=len, reverse=True))
-MONTH_DAY = re.compile(rf"\b({MONTH})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(\d{{4}}))?", re.I)
+# (?!\d): "May 2024" is a month and year, not May 20.
+MONTH_DAY = re.compile(
+    rf"\b({MONTH})\.?\s+(\d{{1,2}})(?!\d)(?:st|nd|rd|th)?(?:,?\s+(\d{{4}}))?", re.I
+)
 DAY_MONTH = re.compile(
-    rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?({MONTH})\.?(?:,?\s+(\d{{4}}))?", re.I
+    rf"\b(\d{{1,2}})(?!\d)(?:st|nd|rd|th)?\s+(?:of\s+)?({MONTH})\.?(?:,?\s+(\d{{4}}))?", re.I
 )
 STOP = frozenset(
     "the a an of in on at to for and or by with from as its their his her this that these those "
