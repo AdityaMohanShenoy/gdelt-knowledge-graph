@@ -1,8 +1,8 @@
 # Phase 6 — Focal-event baseline (dev)
 
-**Status.** This is the baseline on dev. Pilot and train are shown for context,
-and pooled, because 24 dev articles are too few to break down. **Test has not
-been scored.** It waits for the human test review and is then scored once.
+**Status.** This is the baseline on dev, with pilot and train for context.
+**Test was scored once (2026-10-31) with the final ranker v2;** see "Test
+(scored once)" at the end.
 
 **These labels are AI.** The gold labels are the AI-assisted v1 freeze, every
 label `Claude (AI)`. The scores below measure agreement with an independent AI
@@ -196,3 +196,45 @@ Top-3 misses: 1 of 118 (`592726`, a 114-sentence analysis piece).
    analysis, but are not used to pick settings.
 4. **Leave test untouched.** It is scored once, after the human test review
    (which should add core sentences for its 21 articles) and a v3 freeze.
+
+## Test (scored once, 2026-10-31)
+
+**How the test labels were made.**
+- **A blind second reading.** A fresh AI reviewer re-labelled the 21 reviewed
+  test articles from scratch (main event, support, cohort, core sentence),
+  seeing no earlier labels and no model rankings.
+- **Agreement with the Phase 2 labels was very high:**
+  - 21/21 kept
+  - same first supporting sentence in 21/21
+  - mean support Jaccard 0.89
+  - cohort 19/21
+  - every blind core sentence inside the Phase 2 support
+- **The result.** Phase 2's summary and support were kept, and the blind core
+  sentences were added, giving frozen **v3**.
+- **A human spot-check.** The user reviewed a few test articles by hand and
+  found them appropriate. Which ones was not recorded, so every label is still
+  AI.
+
+| File (`data/evidence/focal_events/`) | SHA-256 |
+|---|---|
+| `protest-review-300.test-blind-review.jsonl` | `f48d1a2043945c7fb4e6ae96676ff621196816b1b6fe5774c878d7015d2b97ff` |
+| `protest-review-300.weak.v3.annotations.jsonl` (v2 + test core sentences) | `100cbfa34758c90cdcb1f5bcce3a555329d8fc8d8c668deee1d653bded3da079` |
+| `protest-review-300.weak.v3.annotations.manifest.json` | `609b651e649d6d1ed4aac34b509beba2a7876b03c1fb2c2666ff963aed2abdde` |
+| `protest-review-300.v2.weak.v3.test.metrics.json` | `5cfcb0456fa9d57227c879a5ba676a75050e5c4c42794df7820ab6ce717e1a7f` |
+
+| Test (21) | Final ranker (v2) | Random | Position | Headline |
+|---|---:|---:|---:|---:|
+| **Core Top-1** | **0.67** [0.45–0.83] | 0.09 | 0.48 | 0.52 |
+| Core Top-3 | 1.00 | 0.26 | 0.90 | 0.81 |
+| Full-support Top-1 | 0.86 (v1: 0.76) | 0.53 | — | — |
+
+Evidence validity is 1.00.
+
+**Reading.** On held-out articles the ranker beats every baseline, as it did on
+dev (0.71) and non-test (0.75). The headline-echo filter shows on test as a
+full-support Top-1 gain, from 0.76 to 0.86. Core Top-1 is the same for v1 and
+v2 on test. With 21 articles the interval is wide: this confirms the
+direction, not a precise level.
+
+**Test is now spent.** Any further ranker change must be judged on dev, and
+reported on test only together with this result.

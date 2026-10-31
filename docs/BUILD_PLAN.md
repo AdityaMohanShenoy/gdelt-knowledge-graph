@@ -388,6 +388,10 @@ not scored):
   target (`docs/core-sentence-rubric.md`), the model beats headline similarity:
   core Top-1 0.70 vs 0.56 over non-test, p = 0.0023 paired. The "level with
   headline" reading was an artifact of the saturated metric.
+- **Test scored once (v3 freeze, final ranker v2).** Core Top-1 0.67 [0.45–0.83],
+  against 0.52 for headline similarity and 0.09 for random. Test core sentences
+  came from a blind AI re-label that agreed with Phase 2 on the first support
+  sentence in 21/21 articles. Phase 6 is complete, and test is now spent.
 - **Ranker v2: headline echoes filtered** (`pipeline/focal_ranking.v2.json`).
   Core Top-1 over non-test rises from 0.70 to 0.75, with 6 gains and 0 losses
   (p = 0.031); dev is unchanged. v2 is the ranker from here on, and captions
