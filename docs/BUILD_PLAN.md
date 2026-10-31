@@ -523,6 +523,23 @@ The store is append-only, so keep them, tagged, and exclude them from results.
 **Accept when.** Every seed has a candidate set stored as `claims`, and the queue
 serves candidates across seeds rather than draining one seed first.
 
+**Done 2026-10-31 (`docs/measurements/causal_candidates.md`).**
+- **Retriever.** `pipeline/22_retrieve_causes.py` retrieves from canonical
+  events, not GDELT rows, because GATE 11 showed the old scorer is unusable.
+- **Claims.** 663 unreviewed claims over 63 protest seeds (62 with candidates),
+  in a round-robin queue. JSONL first; loading into the store's `claims` is
+  Phase 12.
+- **GATE 11, re-measured on the text pipeline:** about 2 named causes per
+  protest, and 0.9 evidenced causes retrieved, against a threshold of 4. Edge
+  review is affordable.
+- **Retrieval recall is 0.46.** About 15 of the 21 missed causes are
+  **conditions or grievances**, 2 are remarks, and 3 fall outside the 7-day
+  window.
+- **What follows from that:**
+  - reinstate condition nodes (deferred Phase 4)
+  - extract statements as events
+  - add a longer grievance window
+
 ---
 
 ## Phase 10 — Causal annotation
@@ -724,6 +741,11 @@ Cut in this order. Each leaves a coherent system.
 preserved rejections, or edge agreement in Phase 10.
 
 ### Deferred from the 2026-09-17 plan
+
+**Update 2026-10-31.** Condition nodes and timescale strata are no longer
+optional. Phase 9 measured that about three quarters of the causes articles name
+are standing conditions or grievances (`docs/measurements/causal_candidates.md`).
+Schedule them before Phase 10 depends on recall.
 
 Not scheduled. Revisit after Phase 12:
 - condition nodes and the four timescale strata (structural causes such as

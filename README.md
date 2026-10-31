@@ -414,6 +414,12 @@ uv run python pipeline/21_canonicalize.py pairs --annotations data/evidence/foca
 uv run python pipeline/21_canonicalize.py build --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --mentions data/evidence/events/protest-review-300.mentions.v2.reviewed.jsonl --pairs data/evidence/events/protest-review-300.pairs.v2.json --decisions data/evidence/events/protest-review-300.pairs.v2.decisions.jsonl --output data/evidence/events/protest-review-300.canonical.v2.jsonl
 ```
 
+Retrieve candidate causes for each protest from canonical events (Phase 9). It is broad on purpose: any earlier event sharing an article, actors, a place, names or similar wording becomes an unreviewed claim. Signals propose and never establish cause. Results are in `docs/measurements/causal_candidates.md`.
+
+```bash
+uv run python pipeline/22_retrieve_causes.py --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --mentions data/evidence/events/protest-review-300.mentions.v2.reviewed.jsonl --canonical data/evidence/events/protest-review-300.canonical.v2.jsonl --output data/evidence/events/protest-review-300.claims.v1.jsonl
+```
+
 Stored inference results can be audited without model inference or annotations:
 
 ```bash
