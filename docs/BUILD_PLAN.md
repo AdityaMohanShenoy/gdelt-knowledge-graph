@@ -589,6 +589,16 @@ acyclic by construction.
 > 3, which no team can verify by hand. In that case, bound the depth or the
 > number of seeds before starting human-verified recursion.
 
+**GATE 11, measured 2026-10-31 (`docs/measurements/branching.md`).**
+- **Result:** AI judges accepted 0 of 322 GDELT-group candidates.
+- **The number passes, but it is not valid for its purpose.** The scorer never
+  retrieves the causes the articles name, so the zero measures the retrieval,
+  not how many causes events have.
+- **Phase 9 must retrieve from the text pipeline** (reviewed mentions and
+  canonical events), not from `/api/causal/score`.
+- **Re-measure the evidenced branching factor there** before sizing Phases
+  10–11.
+
 **Accept when.** A seed expands to a multi-level DAG, branches converge on shared
 nodes, and a cycle check finds none.
 
