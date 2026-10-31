@@ -441,8 +441,12 @@ from its pinned text, contains the event it claims, and no field is unsupported.
 - On dev: precision 0.79, estimated recall 0.59, and the focal event captured in
   14 of 24 articles. Place and time are right only 58% and 64% of the time when
   filled.
-- Next is rules v2, targeting those failure patterns, measured on a fresh train
-  sample as well as dev.
+- **Rules v2 (same day) is the current extractor.** On a fresh train sample,
+  blinded against v1, precision rose from 0.78 to 0.88. Place and time are
+  right 86% and 88% of the time when filled, up from 72% and 76%.
+- **Recall stayed near 0.5, the rules' ceiling.** The acceptance check is still
+  not met. The way forward is a decision: a review step that confirms mentions
+  and adds missed ones, or a learned extractor for recall.
 
 ---
 
