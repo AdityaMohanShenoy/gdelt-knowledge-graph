@@ -1061,3 +1061,28 @@ def test_core_sentence_is_scored_against_a_single_target(nlp):
     outside["supporting_sentence_ids"] = [others[0]]
     with pytest.raises(ValueError, match="core sentence must be one of the supporting"):
         evaluate(records, [outside])
+
+
+def test_headline_echoes_rank_last_only_when_enabled():
+    echo = extraction.is_headline_echo
+    headline = "Sadhus hit Kolkata streets in protest against Mamata Banerjee's attack"
+    assert echo(headline + ".", headline, 0.8)
+    assert not echo("Monks marched from Bagbazar to Vivekananda's house on Friday.", headline, 0.8)
+    assert not echo("Kolkata protest", headline, 0.8)  # too short to call an echo
+    record = {
+        "headline": headline,
+        "sentences": [
+            {"sentence_id": 1, "text": headline, "event_relevance": 1.0},
+            {"sentence_id": 2, "text": "Monks marched on Friday demanding an apology.",
+             "event_relevance": 1.0},
+            {"sentence_id": 3, "text": "The board met later.", "event_relevance": 0.0},
+        ],
+    }
+    similarities = [0.99, 0.6, 0.1]
+    plain, filtered = copy.deepcopy(record), copy.deepcopy(record)
+    rank_sentences(plain, similarities, RankingConfig())
+    rank_sentences(filtered, similarities, RankingConfig(drop_headline_echoes=True))
+    assert plain["candidate_sentences"][0]["sentence_id"] == 1
+    assert not any(s["headline_echo"] for s in plain["sentences"])
+    assert [s["sentence_id"] for s in filtered["candidate_sentences"]] == [2, 3, 1]
+    assert [s["rank"] for s in filtered["candidate_sentences"]] == [1, 2, 3]

@@ -388,8 +388,10 @@ not scored):
   target (`docs/core-sentence-rubric.md`), the model beats headline similarity:
   core Top-1 0.70 vs 0.56 over non-test, p = 0.0023 paired. The "level with
   headline" reading was an artifact of the saturated metric.
-- **Headline echoes stay excluded from gold.** Filtering them out is the first
-  ranker change to tune on dev, against core Top-1.
+- **Ranker v2: headline echoes filtered** (`pipeline/focal_ranking.v2.json`).
+  Core Top-1 over non-test rises from 0.70 to 0.75, with 6 gains and 0 losses
+  (p = 0.031); dev is unchanged. v2 is the ranker from here on, and captions
+  are the next error class.
 
 ---
 

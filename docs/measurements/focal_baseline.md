@@ -100,6 +100,60 @@ headline similarity is wrong in 23 articles, and the reverse happens in 6.
 A two-sided sign test gives **p = 0.0023**. Dev alone (24 articles) is too
 small to show this by itself.
 
+## Ranker v2 — headline-echo filter (added 2026-10-31)
+
+`RankingConfig.drop_headline_echoes` (in `pipeline/focal_ranking.v2.json`)
+ranks a sentence last when at least 80% of its content words are headline
+words. The default stays off, so the v1 run reproduces exactly from its saved
+config; that was checked for all 279 rankings.
+
+**Choosing the rule (dev only).**
+- **Lexical overlap at 0.6–0.9: no effect on dev, and no core sentence
+  flagged.** Dev contains no echo errors, so it cannot pick a threshold. 0.8
+  was fixed in advance as a conservative definition, rather than chosen by
+  train or pilot scores.
+- **Cosine similarity to the headline: rejected.** At 0.80–0.90 it hurt dev
+  core Top-1 (as low as 0.54), because it also flags genuine lead sentences
+  that paraphrase the headline.
+
+**The re-run.** Extraction was re-run with the v2 config.
+- Text and sentence segmentation are identical for all 279 articles, and every
+  frozen label validates against the new predictions.
+- Library drift is negligible: headline similarity moved at most 6.6e-7, and
+  event relevance did not move.
+- The filter flagged echoes in 34 articles and changed the top sentence in 21.
+
+| File | SHA-256 |
+|---|---|
+| `pipeline/focal_ranking.v2.json` | `53f32d3066b85bbee656ec6e835db0b3f9743eb734077a321777d56987f02b2b` |
+| `protest-review-300.v2.jsonl` (v2 predictions) | `e4d85346809e8eb876ec1f55997fca49ec82728d3586dae3ca9efa5b954fd6fb` |
+| `protest-review-300.v2.manifest.json` | `09f06500519c931dd5ef763fa2bde6373237d8f39addfe9b547181a6fdf9c0da` |
+| `protest-review-300.v2.weak.v2.dev.metrics.json` | `1b2d8f10e489750ef5bcc27aa03c658d92267fed65fee26ac7116ba3083a9f4c` |
+| `protest-review-300.v2.weak.v2.train.metrics.json` | `04f31db5ca644ce280a353a1bd1fa597c0c5df633b648d9e2c2c8449ee1ce9eb` |
+| `protest-review-300.v2.weak.v2.pilot.metrics.json` | `4cf9d84bf753c98c5c3460eaaba0c3d7cb9ad96df2336d1dbb38bc8c82969e3d` |
+
+| Subset | Ranker | Core Top-1 [95% CI] | Core Top-3 | Support Top-1 |
+|---|---|---:|---:|---:|
+| dev (24) | v1 | 0.71 [0.51–0.85] | 1.00 | 0.96 |
+| dev (24) | **v2** | 0.71 [0.51–0.85] | 1.00 | 0.96 |
+| train + pilot (94, check only) | v1 | 0.70 [0.60–0.79] | 0.88 | 0.82 |
+| train + pilot (94, check only) | **v2** | **0.77** [0.67–0.84] | 0.88 | 0.88 |
+| all non-test (118) | v1 | 0.70 [0.62–0.78] | 0.91 | 0.85 |
+| all non-test (118) | **v2** | **0.75** [0.67–0.82] | 0.91 | 0.90 |
+
+Paired over non-test on core Top-1, v2 gains 6 articles and loses none (sign
+test p = 0.031). The six gains are headline-echo errors from the analysis
+below.
+
+**v2 is the ranker from here on.**
+
+Dev's seven remaining core misses are a different problem:
+- **Six: a different supporting sentence of the same event ranked first.** This
+  is fine-grained, and partly reflects how subjective the core-sentence label
+  is.
+- **One: a photo caption** (`590691`). Captions are the next error class to
+  address. No marker-based caption rule would catch this one.
+
 ## Findings
 
 1. **The ranker beats its baselines once the target can tell them apart.** On
@@ -136,8 +190,8 @@ Top-3 misses: 1 of 118 (`592726`, a 114-sentence analysis piece).
    ranker: drop sentences that repeat the headline before ranking.
 2. **Harder target: done.** The core sentence (v2) is the tuning target from
    here on.
-3. **Next: tune on dev only, against core Top-1.** Filter headline echoes and
-   captions, then try re-weighting. Report each change against the random,
+3. **Echo filter: done (ranker v2).** Next, tune on dev only, against core
+   Top-1: captions, then re-weighting. Report each change against the random,
    position and headline baselines. Pilot and train may be pooled for error
    analysis, but are not used to pick settings.
 4. **Leave test untouched.** It is scored once, after the human test review
