@@ -56,7 +56,7 @@ def main() -> None:
     if bool(args.conditions) != bool(args.condition_mentions):
         parser.error("--conditions and --condition-mentions go together")
     v2 = bool(args.conditions) or args.grievance_days > WINDOW_DAYS
-    retriever = "text-retrieval.v2" if v2 else "text-retrieval.v1"
+    retriever = "text-retrieval.v3" if v2 else "text-retrieval.v1"
     manifest_path = args.output.with_suffix(".manifest.json")
     if args.output.exists() or manifest_path.exists():
         raise FileExistsError("Claims output or manifest already exists")
@@ -121,10 +121,10 @@ def main() -> None:
             # A condition qualifies when its validity window covers the seed's day.
             if c == s or not in_window(seed, cause, 0 if condition else args.grievance_days):
                 continue
-            near = not condition and in_window(seed, cause)
+            reach = "condition" if condition else "near" if in_window(seed, cause) else "far"
             similarity = max(float(a @ b) for a in by_event[s] for b in by_event[c])
             found = signals(seed, cause, similarity)
-            if proposed(found, near):
+            if proposed(found, reach):
                 evidence = {"effect": seed["evidence"], "cause": cause["evidence"]}
                 claims.append(claim(seed, cause, found, evidence, retriever))
     ordered = queue(claims)

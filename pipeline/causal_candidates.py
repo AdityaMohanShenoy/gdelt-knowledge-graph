@@ -17,6 +17,8 @@ import re
 WINDOW_DAYS = 7
 GRIEVANCE_DAYS = 180  # a longer stratum, for triggers weeks or months back
 SIMILARITY_FLOOR = 0.45  # proposes a candidate; never a confidence
+FAR_SIMILARITY = 0.55  # for events beyond WINDOW_DAYS, with a shared actor or place
+CONDITION_SIMILARITY = 0.6  # for conditions not reported in the seed's article
 
 
 def day(text: str) -> dt.date:
@@ -65,18 +67,19 @@ def signals(seed: dict, cause: dict, similarity: float) -> dict:
     }
 
 
-def proposed(found: dict, near: bool = True) -> bool:
-    """Any one signal proposes a near candidate. Beyond the 7-day window one weak
-    signal would propose most of the corpus, so a far one needs the same article,
-    or similar wording together with a shared name, actor or place."""
-    if not near:
+def proposed(found: dict, reach: str = "near") -> bool:
+    """Any one signal proposes a near event. Beyond the 7-day window one weak signal
+    would propose most of the corpus, so a far event needs the same article, or
+    similar wording with a shared actor or place; a condition needs the same
+    article or closer wording. Thresholds were set on the 20 judged recall seeds
+    (docs/measurements/conditions.md), so they are tuned, not validated."""
+    if reach == "far":
         return bool(
             found["same_article"]
-            or (
-                found["similarity"] >= SIMILARITY_FLOOR
-                and (found["actors"] or found["locations"] or found["shared_names"])
-            )
+            or (found["similarity"] >= FAR_SIMILARITY and (found["actors"] or found["locations"]))
         )
+    if reach == "condition":
+        return bool(found["same_article"] or found["similarity"] >= CONDITION_SIMILARITY)
     return bool(
         found["same_article"]
         or found["actors"]

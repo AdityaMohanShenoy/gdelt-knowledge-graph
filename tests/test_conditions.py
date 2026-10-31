@@ -83,9 +83,14 @@ def test_a_condition_is_a_candidate_only_while_it_holds():
     assert not in_window({**seed, "best_time": "2024-08-01"}, node, 0)
 
 
-def test_far_candidates_need_more_than_one_weak_signal():
+def test_far_and_condition_candidates_need_stronger_signals():
     names_only = {"same_article": [], "actors": [], "locations": [],
                   "shared_names": ["delhi"], "similarity": 0.2}
-    assert proposed(names_only) and not proposed(names_only, near=False)
-    assert proposed({**names_only, "similarity": 0.5}, near=False)
-    assert proposed({**names_only, "shared_names": [], "same_article": ["9"]}, near=False)
+    assert proposed(names_only) and not proposed(names_only, "far")
+    similar = {**names_only, "similarity": 0.58}
+    assert not proposed(similar, "far")  # similar wording alone is a topic, not a link
+    assert proposed({**similar, "locations": ["delhi"]}, "far")
+    assert not proposed(similar, "condition") and proposed({**similar, "similarity": 0.6},
+                                                           "condition")
+    co_reported = {**names_only, "same_article": ["9"]}
+    assert proposed(co_reported, "far") and proposed(co_reported, "condition")
