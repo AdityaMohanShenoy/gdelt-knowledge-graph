@@ -427,6 +427,23 @@ unsupported ones.
 **Accept when.** On 20 hand-checked articles, every mention's evidence span, sliced
 from its pinned text, contains the event it claims, and no field is unsupported.
 
+**Decided 2026-10-31.**
+- **Extractor:** local rules (spaCy parse plus entities), measured against AI
+  review. No API.
+- **Output:** mentions are written to a versioned JSONL file first,
+  `data/evidence/events/`, keyed by article ID and pinned text hash. Loading
+  them into the store's `mentions` table is a separate step, because 47 of the
+  139 reviewed articles are not yet in `sources`.
+
+**Rules v1: built, evaluated, not yet accepted.** See
+`docs/measurements/event_mentions.md`.
+- 874 mentions over 139 articles, every field a validated span.
+- On dev: precision 0.79, estimated recall 0.59, and the focal event captured in
+  14 of 24 articles. Place and time are right only 58% and 64% of the time when
+  filled.
+- Next is rules v2, targeting those failure patterns, measured on a fresh train
+  sample as well as dev.
+
 ---
 
 ## Phase 8 — Canonicalization
