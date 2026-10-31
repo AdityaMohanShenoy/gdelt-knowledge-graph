@@ -429,6 +429,13 @@ uv run python pipeline/23_extract_conditions.py build --annotations data/evidenc
 uv run python pipeline/22_retrieve_causes.py --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --mentions data/evidence/events/protest-review-300.conditions.v1.mentions.jsonl --canonical data/evidence/events/protest-review-300.canonical.v4.jsonl --conditions data/evidence/events/protest-review-300.canonical-conditions.v1.jsonl --condition-mentions data/evidence/events/protest-review-300.conditions.v1.jsonl --grievance-days 180 --output data/evidence/events/protest-review-300.claims.v4.jsonl
 ```
 
+Judge candidate causes into edges (Phase 10). `packets` writes blind per-protest batches under `docs/causal-annotation-rubric.md`, double-annotating whole protests for a quarter of claims. `apply` refuses any accept whose quote is not verbatim article text, and stores rejections with their reasons as hard negatives. It reports agreement per relation type and recall. Results are in `docs/measurements/causal_edges.md`.
+
+```bash
+uv run python pipeline/24_annotate_causes.py packets --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --claims data/evidence/events/protest-review-300.claims.v4.jsonl --canonical data/evidence/events/protest-review-300.canonical.v4.jsonl --conditions data/evidence/events/protest-review-300.canonical-conditions.v1.jsonl --tuning-claims data/evidence/events/protest-review-300.claims.v1.jsonl --tuning-key data/evidence/events/protest-review-300.claims.v1.cause-review-key.json --out-dir <dir>
+uv run python pipeline/24_annotate_causes.py apply --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --claims data/evidence/events/protest-review-300.claims.v4.jsonl --key <dir>/key.json --primary <dir>/batch_*.judgements.jsonl --second <dir>/double_*.judgements.jsonl --output data/evidence/events/protest-review-300.edges.v1.jsonl
+```
+
 Stored inference results can be audited without model inference or annotations:
 
 ```bash
