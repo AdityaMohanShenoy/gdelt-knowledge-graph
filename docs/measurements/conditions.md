@@ -41,8 +41,7 @@ for reasons given below.
     dropped 2 already-judged `different` pairs.
   - Canonical clusters are unchanged. For the 20 measured seeds, the only change
     in candidates is one already judged `n`.
-  - So the measurement below, made on the v2 artifacts, stands. v4 and claims v3
-    are the current artifacts.
+  - So the measurement below, made on the v2 artifacts, stands.
 
 ## Extraction (139 reviewed articles)
 
@@ -154,6 +153,37 @@ by the 180-day stratum. Conditions are the useful addition: 27% precision, and
 they account for 16 of the 18 recovered causes. If review cost matters, the
 first things to tighten are the far-event rule and the condition fallback window.
 
+## Tightened retrieval (v3 retriever, claims v4)
+
+The 438 judged candidates for the 20 seeds made it possible to test stricter
+rules without new judging.
+
+**The chosen rule:**
+- **Far events** (more than 7 days back) need the same article, or similarity
+  ≥ 0.55 together with a shared actor or place.
+- **Conditions** need the same article, or similarity ≥ 0.6.
+- **Near events** are unchanged.
+
+| Rule | New candidates kept | `y` kept | Precision | Missed causes found |
+|---|---:|---:|---:|---:|
+| v2 (as measured) | 438 | 49 | 0.11 | 18 / 21 |
+| **chosen** | **153** | **45** | **0.29** | **18 / 21** |
+| far: similarity ≥ 0.6 | 136 | 42 | 0.31 | 18 / 21 |
+| far: same article only | 107 | 40 | 0.37 | 16 / 21 |
+
+**Claims v4.** 1,101 claims (139 conditions), median 17 and mean 17.5 per seed,
+against 30.4 before. Recall stays at **36 / 39**.
+
+**What the stricter rule drops.**
+- Four lower-similarity `y` candidates: three farmer-solidarity protests for
+  one seed, and one condition. None is a named cause.
+- The one v1 candidate lost is the 16 February strike. It was judged `n`, and it
+  falls out of the near window only because the date fix moved it.
+
+**Caveat.** The thresholds were chosen on the same 20 seeds they are reported
+on, so they are tuned, not validated. Phase 10's fresh seeds are the first
+honest test.
+
 ## Files
 
 | File | SHA-256 |
@@ -174,7 +204,8 @@ first things to tighten are the far-event rule and the condition fallback window
 | `data/evidence/events/protest-review-300.pairs.v4.json` (date fix) | `7acc1523dd9105d2ada456e829423376872c5605db35f7cd5bcece1896a44910` |
 | `data/evidence/events/protest-review-300.pairs.v4.decisions.jsonl` | `085db0d262b7074ddeb2f4cba26a2073debae7dab025c1d7282ab8a89ba409cf` |
 | `data/evidence/events/protest-review-300.canonical.v4.jsonl` (current) | `0067ecbec6b4c60bd05e14cac6369b6e384378e6a6bdcd72a5e3c7381354d4ef` |
-| `data/evidence/events/protest-review-300.claims.v3.jsonl` (current) | `0045b550ffc3703588b3673fb3c44f9744abece3742c523db1db766996acb751` |
+| `data/evidence/events/protest-review-300.claims.v3.jsonl` (date fix, v2 rule) | `0045b550ffc3703588b3673fb3c44f9744abece3742c523db1db766996acb751` |
+| `data/evidence/events/protest-review-300.claims.v4.jsonl` (current, tightened) | `9fa87df9307681b2269bae42f314e9756b3a6619679e17fdaa6b5cc2f930f2d5` |
 | `docs/condition-remark-rubric.md` | `ed96df0ef3ddf25470fbcfb84b823fbbd90ef06d15f7f20f6514de6487fa216b` |
 | `docs/same-condition-rubric.md` | `8ddf9fe1710a3ba58e9c132a01e483a133153a3068364176e679964ab8ca95a2` |
 | `docs/condition-audit-rubric.md` | `245d7b9d52b87f0b652cc6ce8298e878c869124f481712da52129fedc9785746` |

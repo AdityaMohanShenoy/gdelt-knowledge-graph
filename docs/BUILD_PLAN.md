@@ -555,8 +555,11 @@ serves candidates across seeds rather than draining one seed first.
   - Condition extraction precision is 73%, mostly demands mis-recorded as
     conditions.
   - Almost no condition states when it began or ended.
-- **Date fix.** "May 2024" no longer parses as May 20. Current artifacts are
-  canonical v4 and claims v3.
+- **Date fix.** "May 2024" no longer parses as May 20.
+- **Tightened retrieval (claims v4).** Far events and conditions need stronger
+  signals. This brings about 17.5 candidates per seed and keeps recall at
+  36 / 39. Thresholds were tuned on the same 20 seeds. Current artifacts are
+  canonical v4 and claims v4.
 
 ---
 
