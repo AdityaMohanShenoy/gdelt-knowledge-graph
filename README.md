@@ -400,6 +400,12 @@ Freeze a fully reviewed batch into a versioned dataset with a manifest. It refus
 uv run python pipeline/10_extract_focal_events.py freeze --input data/evidence/focal_events/protest-review-300.focal.v1.packet.jsonl --predictions data/evidence/focal_events/protest-review-300.jsonl --splits-manifest data/evidence/focal_events/protest-review-300.splits.packet.manifest.json --output data/evidence/focal_events/protest-review-300.weak.v1.annotations.jsonl
 ```
 
+Extract atomic event mentions (Phase 7) from a frozen dataset. Every field is an exact span of the frozen article text, and each mention carries that text's hash. Fields the rules cannot fill stay empty rather than guessed. The extractor proposes; review decides. Results are in `docs/measurements/event_mentions.md`.
+
+```bash
+uv run python pipeline/20_extract_events.py --input data/evidence/focal_events/protest-review-300.weak.v2.annotations.jsonl --output data/evidence/events/protest-review-300.mentions.v1.jsonl
+```
+
 Stored inference results can be audited without model inference or annotations:
 
 ```bash
