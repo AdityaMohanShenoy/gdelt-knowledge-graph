@@ -314,6 +314,138 @@ def validate_mention(mention: dict, text: str) -> None:
             raise ValueError(f"{mention['event_mention_id']}: field outside its evidence")
 
 
+CAMEO_ROOTS = frozenset(CAMEO_ROOT.values())
+REVIEW_FIELDS = ("actors", "targets", "locations")
+
+
+def summary(mention: dict) -> tuple:
+    """A mention's field values as text, to tell whether review changed them."""
+    return (
+        *(tuple(s["text"] for s in mention[f]) for f in REVIEW_FIELDS),
+        (mention["event_time"] or {}).get("text"),
+        mention["event_type"],
+        mention["status"],
+    )
+
+
+def locate(value: str, sentence: dict) -> dict | None:
+    """The span of `value` inside `sentence`, or None when it is not there verbatim."""
+    at = sentence["text"].find(value) if value else -1
+    if at < 0:
+        return None
+    start = sentence["start_char"] + at
+    return {"text": value, "start": start, "end": start + len(value)}
+
+
+def apply_review(gold: dict, mentions: list[dict], review: dict, reviewer: str) -> tuple:
+    """Turn one article's review into reviewed mentions, keeping only verbatim spans.
+
+    Accepted proposals keep their id and take the reviewer's fields; rejected ones
+    are kept as REJECTED with the reason; added events get new ids. Returns the
+    mentions and a count of reviewer values dropped for not being in the text."""
+    text = gold["article_text"]
+    sentences = {s["sentence_id"]: s for s in gold["sentences"]}
+    verdicts = {r["mention_id"]: r for r in review["mentions"]}
+    proposals = [m for m in mentions if m["origin"] == "rules"]
+    if set(verdicts) != {m["event_mention_id"] for m in proposals}:
+        raise ValueError(f"{gold['article_id']}: review does not cover exactly the proposals")
+    dropped = 0
+
+    def fields(entry: dict, sentence: dict) -> dict:
+        nonlocal dropped
+        found = {}
+        for name in REVIEW_FIELDS:
+            spans = [locate(value, sentence) for value in entry.get(name) or []]
+            dropped += spans.count(None)
+            found[name] = [s for s in spans if s is not None]
+        time = locate(entry["event_time"], sentence) if entry.get("event_time") else None
+        dropped += bool(entry.get("event_time")) and time is None
+        event_type = entry.get("event_type")
+        if event_type not in CAMEO_ROOTS:
+            event_type = None
+        status = entry.get("status") if entry.get("status") in {"asserted", "announced"} else None
+        return {**found, "event_time": time, "event_type": event_type, "status": status}
+
+    reviewed = []
+    for mention in proposals:
+        verdict = verdicts[mention["event_mention_id"]]
+        row = {**mention, "reviewer": reviewer, "label_source": "ai_assisted"}
+        if verdict["verdict"] == "accept":
+            new = fields(verdict, sentences[mention["sentence_id"]])
+            row.update(new, review_status="REVIEWED")
+            row["corrected"] = summary(new) != summary(mention)
+        else:
+            row.update(review_status="REJECTED", review_reason=verdict.get("reason"))
+        reviewed.append(row)
+    for index, added in enumerate(review.get("added") or [], 1):
+        sentence = sentences.get(added.get("sentence_id"))
+        action = locate(added.get("action") or "", sentence) if sentence else None
+        if sentence is None or action is None:
+            dropped += 1
+            continue
+        reviewed.append(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "event_mention_id": f"{gold['article_id']}:{sentence['sentence_id']}:r{index}",
+                "source_article_id": gold["article_id"],
+                "text_sha256": text_hash(text),
+                "sentence_id": sentence["sentence_id"],
+                "evidence_start": sentence["start_char"],
+                "evidence_end": sentence["end_char"],
+                "action": {**action, "lemma": None},
+                **fields(added, sentence),
+                "focal": False,
+                "origin": "review_added",
+                "confidence": None,
+                "review_status": "REVIEWED",
+                "extractor": None,
+                "reviewer": reviewer,
+                "label_source": "ai_assisted",
+                "corrected": False,
+            }
+        )
+    # The focal flag belongs to a confirmed event in the core sentence when one exists.
+    seed = next((m for m in mentions if m["origin"] == "focal_seed"), None)
+    focal_sentence = next((m["sentence_id"] for m in mentions if m["focal"]), None)
+    for row in reviewed:
+        row["focal"] = False
+    confirmed = [
+        r
+        for r in reviewed
+        if r["review_status"] == "REVIEWED" and r["sentence_id"] == focal_sentence
+    ]
+    if confirmed:
+        confirmed[0]["focal"] = True
+    elif focal_sentence is not None:
+        sentence = sentences[focal_sentence]
+        reviewed.append(
+            {
+                **(seed or {}),
+                "schema_version": SCHEMA_VERSION,
+                "event_mention_id": f"{gold['article_id']}:{focal_sentence}:focal",
+                "source_article_id": gold["article_id"],
+                "text_sha256": text_hash(text),
+                "sentence_id": focal_sentence,
+                "evidence_start": sentence["start_char"],
+                "evidence_end": sentence["end_char"],
+                "action": None,
+                **{f: [] for f in REVIEW_FIELDS},
+                "event_time": None,
+                "event_type": None,
+                "status": None,
+                "focal": True,
+                "origin": "focal_seed",
+                "confidence": None,
+                "review_status": "UNREVIEWED",
+                "extractor": EXTRACTOR_VERSION,
+            }
+        )
+    reviewed.sort(key=lambda m: (m["sentence_id"], m["evidence_start"], m["event_mention_id"]))
+    for row in reviewed:
+        validate_mention(row, text)
+    return reviewed, dropped
+
+
 def extract_article(nlp: Any, gold: dict) -> list[dict]:
     """Mentions for one reviewed article, offsets into its frozen snapshot text."""
     text = gold["article_text"]

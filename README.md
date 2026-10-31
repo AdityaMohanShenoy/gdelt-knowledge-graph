@@ -403,7 +403,8 @@ uv run python pipeline/10_extract_focal_events.py freeze --input data/evidence/f
 Extract atomic event mentions (Phase 7) from a frozen dataset. Every field is an exact span of the frozen article text, and each mention carries that text's hash. Fields the rules cannot fill stay empty rather than guessed. The extractor proposes; review decides. Results are in `docs/measurements/event_mentions.md`.
 
 ```bash
-uv run python pipeline/20_extract_events.py --input data/evidence/focal_events/protest-review-300.weak.v2.annotations.jsonl --output data/evidence/events/protest-review-300.mentions.v1.jsonl
+uv run python pipeline/20_extract_events.py extract --input data/evidence/focal_events/protest-review-300.weak.v2.annotations.jsonl --output data/evidence/events/protest-review-300.mentions.v2.jsonl
+uv run python pipeline/20_extract_events.py apply-review --input data/evidence/focal_events/protest-review-300.weak.v2.annotations.jsonl --mentions data/evidence/events/protest-review-300.mentions.v2.jsonl --review data/evidence/events/protest-review-300.mentions.v2.review.jsonl --output data/evidence/events/protest-review-300.mentions.v2.reviewed.jsonl
 ```
 
 Stored inference results can be audited without model inference or annotations:
