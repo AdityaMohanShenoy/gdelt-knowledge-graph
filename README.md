@@ -407,6 +407,13 @@ uv run python pipeline/20_extract_events.py extract --input data/evidence/focal_
 uv run python pipeline/20_extract_events.py apply-review --input data/evidence/focal_events/protest-review-300.weak.v2.annotations.jsonl --mentions data/evidence/events/protest-review-300.mentions.v2.jsonl --review data/evidence/events/protest-review-300.mentions.v2.review.jsonl --output data/evidence/events/protest-review-300.mentions.v2.reviewed.jsonl
 ```
 
+Merge reviewed event mentions that report the same real event into canonical events (Phase 8). `pairs` resolves each mention's date against its article's report day and scores candidate pairs to order review. `build` merges only judged-same pairs and flags inconsistent clusters. Auto-merge is off by default. Results are in `docs/measurements/canonical_events.md`.
+
+```bash
+uv run python pipeline/21_canonicalize.py pairs --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --mentions data/evidence/events/protest-review-300.mentions.v2.reviewed.jsonl --output data/evidence/events/protest-review-300.pairs.v2.json
+uv run python pipeline/21_canonicalize.py build --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --mentions data/evidence/events/protest-review-300.mentions.v2.reviewed.jsonl --pairs data/evidence/events/protest-review-300.pairs.v2.json --decisions data/evidence/events/protest-review-300.pairs.v2.decisions.jsonl --output data/evidence/events/protest-review-300.canonical.v2.jsonl
+```
+
 Stored inference results can be audited without model inference or annotations:
 
 ```bash

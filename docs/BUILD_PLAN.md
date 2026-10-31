@@ -483,6 +483,16 @@ event.
 **Accept when.** A known multi-outlet event collapses to one node, and the report
 gives merge counts by tier (auto / reviewed / rejected).
 
+**Done 2026-10-31 (`docs/measurements/canonical_events.md`).**
+- **Output:** 911 reviewed mentions became **866 canonical events**: 26 merged
+  across articles, 24 of them with at least 2 independent outlets.
+- **Acceptance case:** Kejriwal's ED arrest, reported 7 times, is one node.
+- **Tiers:** auto 0, reviewed merges 67, reviewed rejections 526, below the
+  floor 2,922. Auto-merge is off because no score threshold was merge-safe.
+- **Decisions are AI,** at no cost.
+- **Data:** JSONL first. Writing into the store's `events` table is Phase 12.
+- **Known limit:** ongoing campaigns split into one event per day.
+
 > Without this, the strongest "causal" links are the same event reported twice,
 > and corroboration counts outlets that are really one story.
 
