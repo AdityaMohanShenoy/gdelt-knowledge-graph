@@ -67,7 +67,7 @@ def test_explanations_cite_only_relations_the_graph_holds():
             assert e["evidence"][0]["text"] in path["text"]  # the quote is the record's own
     # Strong, explicit, direct causes rank above the two-step chain.
     assert [p["nodes"][0]["id"] for p in r["paths"]][:2] == ["ce:ima", "ce:killing"]
-    assert r["coverage"]["direct_causes_shown"] == r["coverage"]["direct_causes"] == 2
+    assert r["coverage"]["direct_shown"] == r["coverage"]["direct_total"] == 2
     assert 0 < r["coverage"]["strength_share"] <= 1
 
 
@@ -82,3 +82,18 @@ def test_answers_are_deterministic_and_labels_drop_repeated_actors():
     assert explain(GRAPH, q) == explain(GRAPH, q)
     assert label({"kind": "event", "actors": ["the ED", "ED"],
                   "description": "the ED, ED arrested"}) == "ED arrested"
+
+
+def test_effects_read_the_same_graph_downstream():
+    asked = explain(GRAPH, "what did the violence against women lead to", direction="effects")
+    assert asked["status"] == "ok" and asked["scope_note"]
+    r = explain(GRAPH, "", node="cc:violence", direction="effects")
+    assert r["direction"] == "effects"
+    # violence -> killing -> boycott: the chain is reported cause first, ending downstream.
+    chains = [[n["id"] for n in p["nodes"]] for p in r["paths"]]
+    assert ["cc:violence", "ce:killing", "ce:boycott"] in chains
+    held = {(e["source"], e["target"]) for e in GRAPH.edges.values()}
+    assert all((e["source"], e["target"]) in held for p in r["paths"] for e in p["edges"])
+    assert r["coverage"]["not_searched"] == []  # search status is about causes only
+    assert explain(GRAPH, "", node="ce:boycott", direction="effects")["paths"] == []
+

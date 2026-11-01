@@ -452,7 +452,7 @@ uv run python pipeline/26_load_store.py --schema text_graph
 uv run python pipeline/40_build_graph.py --schema text_graph --config pipeline/graph_config.v1.json --register --publish out/causal_graph.json
 ```
 
-Ask the graph why something happened (Phase 13). The dashboard's Causal Evidence tab calls `/api/explain?q=...`. It matches the question to events (or asks back when several stories match), ranks cause chains, and explains them using only the graph's own records and quoted evidence. `/api/explain/topics` lists the protests the graph explains. Results are in `docs/measurements/query.md`.
+Ask the graph why something happened (Phase 13). The dashboard's Causal Evidence tab calls `/api/explain?q=...`. It matches the question to events (or asks back when several stories match), ranks cause chains, and explains them using only the graph's own records and quoted evidence. `/api/explain/topics` lists the protests the graph explains. `/api/consequences?q=...` asks the reverse question, "what did this lead to?" (with `/api/explain/topics?direction=effects` for starting points). Results are in `docs/measurements/query.md`.
 
 Stored inference results can be audited without model inference or annotations:
 

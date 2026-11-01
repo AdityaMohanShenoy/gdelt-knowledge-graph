@@ -570,6 +570,15 @@ body::after {
 }
 .why-ask { padding: 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
 .why-ask label { font-size: 12px; color: var(--text-mid); }
+.why-dir { display: flex; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
+.why-dir-btn {
+  flex: 1; padding: 6px 8px; background: var(--surf2); color: var(--text-mid); border: none;
+  font-family: var(--font); font-size: 12px; cursor: pointer;
+}
+.why-dir-btn + .why-dir-btn { border-left: 1px solid var(--border); }
+.why-dir-btn[aria-pressed="true"] { background: var(--surf3); color: var(--amber); font-weight: 700; }
+.why-dir-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.why-scope { font-size: 11.5px; color: var(--text-dim); margin-top: 4px; max-width: 80ch; }
 .why-input {
   width: 100%; min-height: 64px; resize: vertical; padding: 8px 10px;
   background: var(--surf2); color: var(--text); border: 1px solid var(--border);
@@ -646,6 +655,7 @@ body::after {
 .rel-PROMPTS_RESPONSE { --rel: var(--emerald); }
 
 .why-then { margin: 8px 0 0 20px; font-size: 11.5px; color: var(--text-dim); }
+.why-then-top { margin: 0 0 6px; }
 .why-sub { font-size: 13px; color: var(--text); font-weight: 600; margin: 26px 0 8px; }
 .why-list { font-size: 12px; color: var(--text-mid); line-height: 1.6; padding-left: 18px; max-width: 80ch; }
 .why-options { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; max-width: 640px; }
@@ -919,12 +929,16 @@ body::after {
       <div class="panel" id="panel-causal">
         <aside class="why-side">
           <form class="why-ask" id="why-form">
-            <label for="why-q">Ask why something happened</label>
+            <div class="why-dir" role="group" aria-label="Question type">
+              <button type="button" class="why-dir-btn" data-dir="causes" aria-pressed="true">What caused it</button>
+              <button type="button" class="why-dir-btn" data-dir="effects" aria-pressed="false">What it led to</button>
+            </div>
+            <label for="why-q" id="why-q-label">Ask why something happened</label>
             <textarea class="why-input" id="why-q" maxlength="300"
               placeholder="Why did doctors in Salem boycott work?"></textarea>
             <button class="why-go" type="submit">Explain</button>
           </form>
-          <div class="why-topics-head">Protests the graph explains
+          <div class="why-topics-head"><span id="why-topics-title">Protests the graph explains</span>
             <small id="why-graph-size"></small></div>
           <div class="why-topics" id="why-topics">
             <div class="loading-state"><div class="loading-spinner"></div></div>
@@ -2029,10 +2043,29 @@ const WHY_VERB = {
 };
 let _whyLoaded = false;
 let _whyActive = null;
+let _whyDir = 'causes';
+const WHY_DIR = {
+  causes: { endpoint: '/api/explain', label: 'Ask why something happened',
+            placeholder: 'Why did doctors in Salem boycott work?',
+            topics: 'Protests the graph explains' },
+  effects: { endpoint: '/api/consequences', label: 'Ask what something led to',
+             placeholder: 'What did the RG Kar rape and murder lead to?',
+             topics: 'Causes with the most recorded effects' },
+};
 
 async function loadCausal() {
   if (_whyLoaded) return;
   _whyLoaded = true;
+  document.querySelectorAll('.why-dir-btn').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.dir === _whyDir) return;
+    _whyDir = b.dataset.dir;
+    document.querySelectorAll('.why-dir-btn').forEach(x =>
+      x.setAttribute('aria-pressed', String(x === b)));
+    $('why-q-label').textContent = WHY_DIR[_whyDir].label;
+    $('why-q').placeholder = WHY_DIR[_whyDir].placeholder;
+    $('why-topics-title').textContent = WHY_DIR[_whyDir].topics;
+    loadWhyTopics();
+  }));
   $('why-form').addEventListener('submit', e => {
     e.preventDefault();
     const q = $('why-q').value.trim();
@@ -2041,7 +2074,11 @@ async function loadCausal() {
   $('why-q').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('why-form').requestSubmit(); }
   });
-  const d = await api('/api/explain/topics');
+  await loadWhyTopics();
+}
+
+async function loadWhyTopics() {
+  const d = await api(`/api/explain/topics?direction=${_whyDir}`);
   const list = $('why-topics');
   if (!d || d.error) {
     list.innerHTML = '';
@@ -2049,10 +2086,13 @@ async function loadCausal() {
       deployment. Build it with <code>pipeline/40_build_graph.py --publish out/causal_graph.json</code>.</p>`;
     return;
   }
-  $('why-graph-size').textContent = `${d.topics.length} protests, ${d.edges} cause links`;
+  $('why-graph-size').textContent = _whyDir === 'causes'
+    ? `${d.topics.length} protests, ${d.edges} cause links`
+    : `${d.topics.length} causes, ${d.edges} cause links`;
   list.innerHTML = d.topics.map(t => `
     <button class="why-topic" data-node="${esc(t.id)}">${esc(t.label)}
-      ${t.date ? `<time>${esc(t.date)}</time>` : ''}</button>`).join('');
+      <time>${[t.date, t.downstream_links ? `${t.downstream_links} links downstream` : '']
+        .filter(Boolean).map(esc).join(', ')}</time></button>`).join('');
   list.querySelectorAll('.why-topic').forEach(b =>
     b.addEventListener('click', () => askWhy({ node: b.dataset.node })));
   if (d.topics.length) askWhy({ node: d.topics[0].id });
@@ -2065,14 +2105,14 @@ async function askWhy(params) {
   document.querySelectorAll('.why-topic').forEach(b =>
     b.classList.toggle('active', b.dataset.node === _whyActive));
   const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== ''));
-  const d = await api(`/api/explain?${qs}`);
+  const d = await api(`${WHY_DIR[_whyDir].endpoint}?${qs}`);
   if (!d) { main.innerHTML = '<p class="why-empty">The explanation didn’t load. Check your connection and ask again.</p>'; return; }
   if (d.status === 'clarify') return renderClarify(d, params.q);
   if (d.status !== 'ok') {
     main.innerHTML = `<h2 class="why-q">${esc(params.q || 'No match')}</h2>
       <p class="why-empty">Nothing in the graph matches this question. Try naming who protested,
-      where, or what about. For example: “Why did farmers camp at the Shambhu border?” Or pick a
-      protest from the list.</p>`;
+      where, or what about. For example: “${esc(WHY_DIR[_whyDir].placeholder)}” Or pick one from
+      the list.</p>`;
     return;
   }
   renderWhy(d);
@@ -2125,20 +2165,33 @@ function whyLink(e) {
 function renderWhy(d) {
   const cov = d.coverage;
   const pct = Math.round(cov.strength_share * 100);
+  const up = d.direction !== 'effects';
   const targets = d.targets.map(t => `<b>${esc(t.label)}</b>`).join(', ');
   // A chain whose rest is an earlier chain stops there and points to it.
   const shown = d.paths.map(p => p.edges.map(e => e.id).join('|'));
   const chains = d.paths.map((p, i) => {
-    const steps = [whyNode(p.nodes[0], false)];
-    for (let j = 0; j < p.edges.length; j++) {
+    // The event asked about is the last node of a cause chain, the first of an effect chain.
+    // An effect chain that opens like an earlier one points to it and shows only the rest.
+    let start = 0;
+    const steps = [];
+    if (!up) {
+      const ids = p.edges.map(e => e.id);
+      for (let j = ids.length - 1; j >= 1 && !start; j--) {
+        const pre = ids.slice(0, j).join('|');
+        const k = shown.slice(0, i).findIndex(x => x === pre || x.startsWith(pre + '|'));
+        if (k >= 0) { start = j; steps.push(`<p class="why-then why-then-top">As in chain ${k + 1}, then:</p>`); }
+      }
+    }
+    steps.push(whyNode(p.nodes[start], !up && start === 0));
+    for (let j = start; j < p.edges.length; j++) {
       const rest = p.edges.slice(j).map(e => e.id).join('|');
-      const earlier = j > 0 ? shown.slice(0, i).indexOf(rest) : -1;
+      const earlier = up && j > 0 ? shown.slice(0, i).indexOf(rest) : -1;
       if (earlier >= 0) {
         steps.push(`<p class="why-then">Then as in chain ${earlier + 1}.</p>`);
         break;
       }
       steps.push(whyLink(p.edges[j]));
-      steps.push(whyNode(p.nodes[j + 1], j === p.edges.length - 1));
+      steps.push(whyNode(p.nodes[j + 1], up && j === p.edges.length - 1));
     }
     return `<div class="why-chain"><div class="why-rank" aria-label="Rank ${i + 1}">${i + 1}</div>
       <div class="why-steps">${steps.join('')}</div></div>`;
@@ -2152,17 +2205,20 @@ function renderWhy(d) {
     <h2 class="why-q">${esc(d.question)}</h2>
     <p class="why-grounded">Answering about ${targets}.</p>
     <div class="why-cov">
-      <div class="why-cov-bar" role="img" aria-label="${pct}% of causal support shown">
+      <div class="why-cov-bar" role="img" aria-label="${pct}% of recorded links shown">
         <div class="why-cov-fill" style="width:${pct}%"></div></div>
-      <div class="why-cov-text">These chains carry <b>${pct}%</b> of the recorded causal support,
-        and ${cov.direct_causes_shown} of ${cov.direct_causes} direct causes.</div>
+      <div class="why-cov-text">These chains carry <b>${pct}%</b> of the recorded ${up ? 'causal support' : 'downstream links'},
+        and ${cov.direct_shown} of ${cov.direct_total} direct ${up ? 'causes' : 'effects'}.</div>
     </div>
+    ${d.scope_note ? `<p class="why-scope">${esc(d.scope_note)}</p>` : ''}
     ${d.paths.length ? `<div class="why-chains">${chains}</div>`
-      : '<p class="why-empty">The graph records no causes for this. Its articles either name none, or every candidate was rejected.</p>'}
+      : up ? '<p class="why-empty">The graph records no causes for this. Its articles either name none, or every candidate was rejected.</p>'
+           : '<p class="why-empty">The graph records nothing this led to. Try “What caused it” instead.</p>'}
     ${unsearched}
     <p class="why-foot">Every link above is a judged record in the causal graph, quoted from the
-      source article. All links were annotated by AI; a person has checked ${d.labels.human_verified}
-      of the graph's ${d.labels.edges}, including every link an independent AI re-check doubted.
+      source article. ${d.labels.human_verified === d.labels.edges
+        ? `All ${d.labels.edges} links were annotated by AI and then checked by a person.`
+        : `All links were annotated by AI; a person has checked ${d.labels.human_verified} of the graph's ${d.labels.edges}.`}
       Strength and ranking order the evidence; they are not probabilities.
       Graph version ${esc(String(d.graph_version).slice(0, 12))}.</p>`;
 }

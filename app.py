@@ -798,14 +798,21 @@ if (ROOT / "frontend").exists():
 
 # ── Causal questions over the compiled graph (Phase 13) ─────────────────────
 @app.get("/api/explain/topics")
-async def explain_topics():
-    """The protests the graph explains, newest first, as starting points."""
+async def explain_topics(direction: str = "causes"):
+    """Starting points: for causes, the protests the graph explains, newest first;
+    for effects, the causes that led to the most, most first."""
     g = get_graph()
     if g is None:
         return {"error": "no_graph", "topics": []}
-    topics = [causal_query.node_card(g, n, {}) for n in g.seeds]
-    topics.sort(key=lambda t: (t["date"] or "", t["id"]), reverse=True)
-    return {"graph_version": g.version, "topics": topics,
+    if direction == "effects":
+        reach = {n: len(causal_query.ancestors(g, [n], direction="effects")[1])
+                 for n in g.children}
+        topics = [{**causal_query.node_card(g, n, {}), "downstream_links": reach[n]}
+                  for n in sorted(reach, key=lambda n: (-reach[n], n))]
+    else:
+        topics = [causal_query.node_card(g, n, {}) for n in g.seeds]
+        topics.sort(key=lambda t: (t["date"] or "", t["id"]), reverse=True)
+    return {"graph_version": g.version, "topics": topics, "direction": direction,
             "nodes": len(g.nodes), "edges": len(g.edges)}
 
 
@@ -817,10 +824,27 @@ async def explain_question(q: str = "", cluster: int | None = None, k: int = 5,
     g = get_graph()
     if g is None:
         return {"status": "error", "error": "no_graph"}
+    return _ask(g, q, cluster, k, node, "causes")
+
+
+def _ask(g, q: str, cluster, k: int, node, direction: str):
     q = q[:300]
+    k = max(1, min(k, 10))
     if node:
-        return causal_query.explain(g, q.strip(), k=max(1, min(k, 10)), node=node)
+        return causal_query.explain(g, q.strip(), k=k, node=node, direction=direction)
     if not q.strip():
-        return {"status": "no_match", "question": q, "query_terms": []}
-    return causal_query.explain(g, q.strip(), cluster=cluster, k=max(1, min(k, 10)))
+        return {"status": "no_match", "question": q, "query_terms": [], "direction": direction}
+    return causal_query.explain(g, q.strip(), cluster=cluster, k=k, direction=direction)
+
+
+@app.get("/api/consequences")
+async def consequences_question(q: str = "", cluster: int | None = None, k: int = 5,
+                                node: str | None = None):
+    """What did this lead to? The same grounding and ranking as /api/explain, read
+    downstream. Effects are only those the graph records: it was built by tracing
+    the causes of protests, so it holds protests and the steps toward them."""
+    g = get_graph()
+    if g is None:
+        return {"status": "error", "error": "no_graph"}
+    return _ask(g, q, cluster, k, node, "effects")
 
