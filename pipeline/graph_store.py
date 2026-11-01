@@ -261,7 +261,7 @@ async def snapshot(connection) -> dict:
             WHERE a.external_id IS NOT NULL ORDER BY a.external_id""",
         "sources": """SELECT external_id, url FROM sources WHERE external_id IS NOT NULL
             ORDER BY external_id""",
-        "merges": """SELECT external_id, node_a, node_b, decision FROM node_merges
+        "merges": """SELECT external_id, node_a, node_b, decision, reviewed_at FROM node_merges
             ORDER BY external_id""",
     }
     return {name: [plain(r) for r in await connection.fetch(sql)] for name, sql in query.items()}
@@ -335,7 +335,13 @@ def compile_graph(snap: dict, config: dict) -> bytes:
                                      key=lambda h: (h["role"], h["annotator"])),
         })
     by_id = {n["id"]: n for n in nodes.values()}
-    same = [(m["node_a"], m["node_b"]) for m in snap.get("merges", [])
+    # node_merges is append-only, so a corrected decision is a newer row for the
+    # same pair; the most recent one per pair is the one that counts.
+    latest: dict[tuple[str, str], dict] = {}
+    for m in sorted(snap.get("merges", []),
+                    key=lambda m: (m.get("reviewed_at") or "", m["external_id"])):
+        latest[tuple(sorted((m["node_a"], m["node_b"])))] = m
+    same = [(m["node_a"], m["node_b"]) for m in latest.values()
             if m["decision"] == "same" and m["node_a"] in by_id and m["node_b"] in by_id]
     alias = representatives(same if config.get("merge_duplicates", True) else [], by_id)
     edges, loops = fold(claim_edges, alias, by_id)

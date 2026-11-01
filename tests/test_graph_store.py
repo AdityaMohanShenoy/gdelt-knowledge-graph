@@ -141,3 +141,20 @@ def test_judged_duplicates_merge_at_build_and_the_store_keeps_both_nodes():
     assert node["merged_from"] == ["ce:rally"]
     assert graph["counts"]["nodes_merged_away"] == 1
     assert len(json.loads(apart)["edges"]) == 2
+
+
+def test_a_newer_merge_decision_supersedes_an_older_one():
+    same = {"key": "ce:arrest|ce:rally", "a": "ce:arrest", "b": "ce:rally", "decision": "same",
+            "why": "same", "reviewer": "Claude (AI)", "label_source": "ai_assisted",
+            "reviewed_at": "2026-11-01T00:00:00+00:00"}
+    undo = {**same, "key": "ce:arrest|ce:rally#2", "decision": "different",
+            "reviewed_at": "2026-11-01T12:00:00+00:00"}
+
+    async def body(connection, schema):
+        await load(connection, {**DATA, "merges": [same, undo]})
+        return compile_graph(await snapshot(connection), {}), await connection.fetchval(
+            "SELECT count(*) FROM node_merges")
+
+    graph, rows = run(body)
+    assert rows == 2  # both decisions stay: the store is append-only
+    assert len(json.loads(graph)["edges"]) == 2  # the later "different" wins

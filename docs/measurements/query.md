@@ -114,6 +114,6 @@ broken by id, as the endpoint golden rule in `CLAUDE.md` requires.
 - `causal_query.py`: grounding, retrieval, ranking, coverage and explanation
 - `app.py`: `/api/explain`, `/api/explain/topics`
 - `frontend/index.html`: the Causal Evidence tab
-- `out/causal_graph.json`: graph `7cf84d52e097a387`
+- `out/causal_graph.json`: graph `7cf84d52e097a387` at Phase 13; `8744efdb37c96eb5` since the MSP merge correction (`graph_build.md`)
   (`7cf84d52e097a387b00fcd2e9eaf2966a1070410a63786aa26b4e6302aa6c10c`)
 - `tests/test_causal_query.py`
