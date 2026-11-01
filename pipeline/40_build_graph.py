@@ -7,7 +7,8 @@ Writes data/evidence/graph/causal-graph.<version>.json, where the version is the
 SHA-256 of the file's bytes. The build only reads the store, so the same store
 and config always give the same bytes: an existing file for a version is checked
 byte for byte, never overwritten. `--register` records the build in
-`build_versions`, the one table it writes.
+`build_versions`, the one table it writes. `--publish out/causal_graph.json`
+copies the same bytes to where the deployed app reads them.
 """
 
 import argparse
@@ -44,6 +45,9 @@ async def main_async(args: argparse.Namespace) -> dict:
                                    "deterministic")
         else:
             path.write_bytes(graph)
+        if args.publish:
+            # The deployed app reads this copy; the bytes, and so the version, are the same.
+            args.publish.write_bytes(graph)
         built = json.loads(graph)
         if args.register:
             # The config hash covers the store too: one config over a changed store
@@ -67,6 +71,8 @@ def main() -> None:
     parser.add_argument("--out-dir", type=Path, default=OUT)
     parser.add_argument("--database-url", default=DEFAULT_DATABASE_URL)
     parser.add_argument("--register", action="store_true")
+    parser.add_argument("--publish", type=Path,
+                        help="also write the graph here for the app, e.g. out/causal_graph.json")
     args = parser.parse_args()
     print(json.dumps(asyncio.run(main_async(args)), indent=2))
 

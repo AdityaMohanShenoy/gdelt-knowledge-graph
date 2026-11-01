@@ -13,6 +13,7 @@ import os
 import duckdb
 import math
 
+import causal_query
 import scoring
 from scoring.sql import num, rows, safe
 
@@ -102,6 +103,18 @@ def _quad_filter(quad: str) -> str:
 
 def _date_filter(date_from: int, date_to: int) -> str:
     return f"AND day >= {date_from} AND day <= {date_to}"
+
+# ── Compiled causal graph (Phase 13) ────────────────────────────────────────
+# The one runtime input besides the parquet: the graph pipeline/40_build_graph.py
+# compiled and published. Small (~300KB), read once, only by /api/explain*.
+GRAPH_FILE = ROOT / "out" / "causal_graph.json"
+_graph = None
+
+def get_graph():
+    global _graph
+    if _graph is None and GRAPH_FILE.exists():
+        _graph = causal_query.Graph.load(GRAPH_FILE)
+    return _graph
 
 # ── Routes ───────────────────────────────────────────────────────────────────
 @app.get("/")
@@ -781,3 +794,33 @@ async def causal_score(event_id: str = "", country: str = "IN"):
 # ── Serve frontend static assets if any ──────────────────────────────────────
 if (ROOT / "frontend").exists():
     app.mount("/static", StaticFiles(directory=ROOT / "frontend"), name="static")
+
+
+# ── Causal questions over the compiled graph (Phase 13) ─────────────────────
+@app.get("/api/explain/topics")
+async def explain_topics():
+    """The protests the graph explains, newest first, as starting points."""
+    g = get_graph()
+    if g is None:
+        return {"error": "no_graph", "topics": []}
+    topics = [causal_query.node_card(g, n, {}) for n in g.seeds]
+    topics.sort(key=lambda t: (t["date"] or "", t["id"]), reverse=True)
+    return {"graph_version": g.version, "topics": topics,
+            "nodes": len(g.nodes), "edges": len(g.edges)}
+
+
+@app.get("/api/explain")
+async def explain_question(q: str = "", cluster: int | None = None, k: int = 5,
+                           node: str | None = None):
+    """Why did this happen? Ground the question, rank cause chains, explain from
+    graph records only. Several matching clusters come back as a clarification."""
+    g = get_graph()
+    if g is None:
+        return {"status": "error", "error": "no_graph"}
+    q = q[:300]
+    if node:
+        return causal_query.explain(g, q.strip(), k=max(1, min(k, 10)), node=node)
+    if not q.strip():
+        return {"status": "no_match", "question": q, "query_terms": []}
+    return causal_query.explain(g, q.strip(), cluster=cluster, k=max(1, min(k, 10)))
+

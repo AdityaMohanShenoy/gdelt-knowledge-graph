@@ -6,12 +6,19 @@ from the code and that have already caused bugs.
 `docs/BUILD_PLAN.md` is the phased plan for building out the full causal knowledge
 graph — numbered tasks with acceptance criteria, meant to be executed one at a time.
 
-## Runtime reads exactly one file
+## Runtime reads exactly two files
 
 `app.py` has a single `read_parquet`, pointed at `out/step2_causal_filtered.parquet`
 (63MB, committed). Nothing at runtime touches `out_parquet/` or `out/step1_*` —
 those are gitignored and are **not present in a cloud sandbox**. Don't try to
 re-run the pipeline there; it needs ~1GB of raw data that only exists locally.
+
+The second is `out/causal_graph.json` (~360KB, committed): the compiled causal
+graph, read lazily and only by `/api/explain*` (`causal_query.py`). It is
+published by `pipeline/40_build_graph.py --publish out/causal_graph.json`; its
+SHA-256 is the graph version. Never hand-edit it — rebuild from the store. The
+old `/api/causal/*` endpoints stay because `test_app.py` exercises them; the UI
+no longer calls them.
 
 Everything downstream of step 2 (dashboard, all endpoints, tests) runs anywhere.
 
