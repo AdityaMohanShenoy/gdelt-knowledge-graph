@@ -779,6 +779,19 @@ External checks, none of which consult the annotation pool:
 Agreement between reviewers measures consistency, not correctness. Without these
 checks, the system only validates itself against itself.
 
+**Evaluated 2026-11-01 (`docs/measurements/final_evaluation.md`). Not complete
+by this definition.**
+- **Checklist.** 9 of 11 criteria are met. Two are not: no causal edge is
+  human-verified (all AI, with a 40-edge spot check, 39/40 agree), and the NER
+  benchmark was never built.
+- **External check 1.** Against 103 causes documented by 67 outside sources,
+  none in the corpus, recall is 0.25 strict and 0.43 including partial matches.
+  The misses are mostly calls, deadlines and prior incidents that the 139
+  articles don't report.
+- **External check 2.** Rebuilt for the final text pipeline, because `31_` tests
+  the retired GDELT scorer. Accepts were 0/60 unrelated pairs, 0/35 valid future
+  pairs (one control was mis-dated) and 27/32 real positives.
+
 ---
 
 ## Responsibilities
