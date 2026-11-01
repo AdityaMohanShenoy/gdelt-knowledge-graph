@@ -271,3 +271,25 @@ ALTER TABLE annotations ADD COLUMN IF NOT EXISTS role TEXT;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS time_confidence_label TEXT;
 -- The pipeline's article id, so an edge's evidence spans resolve to their URLs.
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS external_id TEXT;
+
+-- Judged "is this the same real-world thing?" decisions between graph nodes
+-- (events or conditions, across kinds). Merging is a build-time alias: the
+-- canonical nodes, and every claim keyed on them, stay as they are. Both
+-- decisions are kept; a "different" is evidence too.
+CREATE TABLE IF NOT EXISTS node_merges (
+    node_merge_id BIGSERIAL PRIMARY KEY,
+    external_id   TEXT NOT NULL UNIQUE,
+    node_a        TEXT NOT NULL,
+    node_b        TEXT NOT NULL,
+    decision      TEXT NOT NULL CHECK (decision IN ('same', 'different')),
+    why           TEXT,
+    reviewer      TEXT NOT NULL,
+    label_source  TEXT NOT NULL,
+    reviewed_at   TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS node_merges_append_only ON node_merges;
+CREATE TRIGGER node_merges_append_only
+    BEFORE UPDATE OR DELETE ON node_merges
+    FOR EACH ROW EXECUTE FUNCTION evidence_is_append_only();

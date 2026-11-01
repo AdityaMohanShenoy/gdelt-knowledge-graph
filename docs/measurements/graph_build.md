@@ -124,6 +124,78 @@ schema:
 - a second annotator's rejection travels with the edge;
 - edges carry spans and URLs.
 
+## Duplicate nodes (merged after the first build)
+
+Phase 11 found that some real-world causes exist as more than one node. The RG
+Kar killing was split three ways, and the farmers' Shambhu camp four ways. That
+splits corroboration and repeats paths, which matters for Phase 13. Rewriting
+canonical events would change their ids and every claim keyed on them, so
+merging is a judged alias applied at build time.
+
+**Candidates.** All 22,366 pairs among the 212 graph nodes were scored with local
+mpnet. Two scores were used: the closest pair of evidence sentences, and the
+similarity of the two descriptions. Events and conditions were compared with each
+other too.
+- **Above the cutoff.** All 157 pairs with either score ≥ 0.7 were judged.
+- **Below it.** A seeded random 40 of the 373 pairs in [0.6, 0.7) were judged
+  to estimate what the cutoff misses.
+- **Rubric.** `docs/same-node-rubric.md`: the same occurrence or state, even
+  across kinds. A killing and the protests over it, a grievance and its demand,
+  or a campaign and one action within it are different.
+
+| Band | same / judged |
+|---|---:|
+| ≥ 0.7 | 20 / 157 |
+| 0.6–0.7 (sample) | 1 / 40 |
+
+At the sampled rate, roughly 8 duplicates remain among the 333 unjudged pairs in
+the lower band.
+
+**Storage.** Decisions go in a new append-only table, `node_merges`, which keeps
+all 197, "different" ones included.
+
+**Build behaviour** (`merge_duplicates`, on by default):
+- **Clusters.** Union-find over the "same" pairs. Each cluster keeps one node:
+  an event over a condition, then the smallest id. The absorbed ids are listed
+  on it as `merged_from`, and it takes the most informative search status.
+- **Parallel edges.** Claims that now join the same pair fold into one edge:
+  `claim_ids`, all their evidence spans, all their review history.
+  `corroboration_count` becomes the number of distinct outlets across the
+  combined evidence. The strongest claim leads for relation and strength.
+- **Self-loops.** A claim whose two ends merged is dropped and listed in
+  `self_loops_dropped`. One example is "the fast began" ESCALATES "the fast
+  continued", where both now name the same fast.
+- **Cycles.** Each build runs a cycle check, because merging could join two
+  branches into a loop the unmerged graph never had.
+
+| | Before merge (`57acd8f5…`) | After merge (`7cf84d52…`) |
+|---|---:|---:|
+| Nodes | 212 | 195 (17 merged away) |
+| Edges | 244 | 207 (23 now carry several claims) |
+| Self-loops dropped | — | 7 |
+| Edges corroborated by 2+ outlets | 18 | 16 (some folded together, some dropped as self-loops) |
+| Cycles | none | none |
+
+**The clusters that matter most.**
+- **RG Kar killing:** 3 nodes → 1, which now explains 11 effects. One absorbed
+  node is dated 22 August from its report's fallback date; its action is the
+  killing itself ("rape and murder of a 31-year-old doctor").
+- **MSP legal guarantee:** the condition and the event "the protesting farmers
+  demanding" → 1 node, which explains 13 effects.
+- **Shambhu–Khanauri camp:** 4 nodes → 1.
+- **WBJDF fast-unto-death:** its start, its continuation and its 10th day → 1.
+- **Also merged:** the Delhi heatwave (2 nodes), the KMM/SKM Delhi Chalo march,
+  the Shambhu border sealing, the Dharavi demolition notice, and the FIR
+  against Panjab University students.
+
+**Two judgement calls the judges flagged.**
+- **The fast.** Merging its start with its continuation treats the fast as one
+  ongoing protest. A stricter reading would keep the start separate.
+- **MSP.** The MSP condition was merged with the farmers' demand for it,
+  because the condition's own wording is the demand.
+
+Both are recorded with their reasons in `node-merges.v1.jsonl`.
+
 ## Not done here
 
 - **Entities are not built.** Actors and places stay as text lists on nodes.
@@ -140,4 +212,7 @@ schema:
 | File | SHA-256 |
 |---|---|
 | `pipeline/graph_config.v1.json` | `49c2c821fce2e3f0c6fe5dc9bf2fed61826deaf07b249b0195351021a50d4faf` |
-| `data/evidence/graph/causal-graph.57acd8f502198625.json` (build A) | `57acd8f5021986256d1c10d59491f95c7ef2ab809eaf75d0498adab163e4cca1` |
+| `data/evidence/graph/causal-graph.57acd8f502198625.json` (build A, before merging) | `57acd8f5021986256d1c10d59491f95c7ef2ab809eaf75d0498adab163e4cca1` |
+| `data/evidence/graph/causal-graph.7cf84d52e097a387.json` (current, duplicates merged) | `7cf84d52e097a387b00fcd2e9eaf2966a1070410a63786aa26b4e6302aa6c10c` |
+| `data/evidence/graph/node-merges.v1.jsonl` (197 decisions) | `5124510d937a6371a1d93d0cb7a9413fc9f061c6d1cec7633040306973731b32` |
+| `docs/same-node-rubric.md` | `1c494f5ed950fb51861b7e8690f409f1f5c4046bb4d7400d157b384295a0fd9a` |

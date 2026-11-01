@@ -32,6 +32,7 @@ DEFAULTS = {
     "condition_mentions": Path(f"{E}.conditions.v1.jsonl"),
     "status": Path(f"{E}.expansion.l3.status.jsonl"),
     "spot_check": Path(f"{E}.edges.v1.human-spotcheck.jsonl"),
+    "merges": ROOT / "data/evidence/graph/node-merges.v1.jsonl",
 }
 LEVELS = [
     (Path(f"{E}.claims.v4.jsonl"), Path(f"{E}.edges.v1.jsonl"), Path(f"{E}.edges.v1.second.jsonl")),

@@ -70,10 +70,14 @@ async def _seed(connection):
     annotation_id = await connection.fetchval(
         "INSERT INTO annotations (claim_id, annotator, action, machine_strength, human_strength) "
         "VALUES ($1, 'ana', 'accept', 0.7, 0.9) RETURNING annotation_id", claim_id)
+    merge_id = await connection.fetchval(
+        "INSERT INTO node_merges (external_id, node_a, node_b, decision, reviewer, label_source) "
+        "VALUES ('ce:a|ce:b', 'ce:a', 'ce:b', 'same', 'ana', 'human') RETURNING node_merge_id")
     return {
         "source_id": source_id, "entity_id": entity_id, "event_id": event_id,
         "mention_id": mention_id, "condition_id": condition_id, "build_id": build_id,
         "claim_id": claim_id, "claim_channel_id": channel_id, "annotation_id": annotation_id,
+        "node_merge_id": merge_id,
     }
 
 
@@ -82,7 +86,7 @@ def test_init_is_idempotent_and_every_table_round_trips():
         await db.init(connection, schema)
         await db.init(connection, schema)          # the acceptance criterion: twice is safe
         ids = await _seed(connection)
-        counts = await db.describe(connection)
+        counts = await db.describe(connection, schema)
         return ids, counts
 
     ids, counts = run(body)

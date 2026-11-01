@@ -713,6 +713,11 @@ one threshold yields a new version without touching the evidence store.
   a new version (171 edges) with the evidence row counts unchanged.
 - **Not yet done.** Entities are not resolved, and the annotator does not read
   `text_graph` yet.
+- **Duplicate nodes merged.** 197 judged pairs (21 same), kept in the append-only
+  `node_merges` table and applied at build time. The current graph,
+  `7cf84d52e097a387`, has 207 edges and 195 nodes: 17 nodes merged away, 7
+  self-loops dropped, no cycles. The RG Kar killing is now one node explaining
+  11 effects.
 
 ---
 

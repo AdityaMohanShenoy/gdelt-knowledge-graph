@@ -27,9 +27,9 @@ DEFAULT_DATABASE_URL = os.environ.get(
 
 TABLES = (
     "sources", "entities", "events", "mentions", "conditions",
-    "claims", "claim_channels", "annotations", "build_versions",
+    "claims", "claim_channels", "annotations", "build_versions", "node_merges",
 )
-APPEND_ONLY = ("sources", "mentions", "annotations")
+APPEND_ONLY = ("sources", "mentions", "annotations", "node_merges")
 DEFAULT_SCHEMA = os.environ.get("EVIDENCE_SCHEMA", "public")
 _IDENT = re.compile(r"^[a-z_][a-z0-9_]*$")
 
