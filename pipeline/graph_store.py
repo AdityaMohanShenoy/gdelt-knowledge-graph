@@ -17,6 +17,9 @@ import datetime as dt
 import hashlib
 import json
 from pathlib import Path
+from urllib.parse import urlsplit
+
+from causal_expansion import find_cycle
 
 GRAPH_SCHEMA = "causal-graph.v1"
 TIME_LABELS = ("high", "medium", "low")
@@ -32,7 +35,8 @@ def day(text: str | None) -> dt.datetime | None:
 
 def gather(annotations: Path, mentions: Path, canonical: Path, conditions: Path,
            condition_mentions: Path, levels: list[tuple[Path, Path, Path]],
-           status: Path, spot_check: Path | None = None) -> dict:
+           status: Path, spot_check: Path | None = None,
+           merges: Path | None = None) -> dict:
     """Everything to load, from the pipeline's files. `levels` is one
     (claims, primary edges, second edges) triple per expansion level, in order."""
     articles = {}
@@ -70,6 +74,7 @@ def gather(annotations: Path, mentions: Path, canonical: Path, conditions: Path,
         "edges": edges,
         "status": {s["node_id"]: s["search_status"] for s in rows(status)},
         "spot_check": rows(spot_check) if spot_check else [],
+        "merges": rows(merges) if merges else [],
     }
 
 
@@ -205,6 +210,15 @@ async def load(connection, data: dict) -> dict:
             [judgement(e) for e in data["edges"]]
             + [spot(s) for s in data["spot_check"] if s["human_verdict"] != "unsure"])
 
+        await insert("node_merges", """
+            INSERT INTO node_merges (external_id, node_a, node_b, decision, why, reviewer,
+                label_source, reviewed_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (external_id) DO NOTHING""", [
+            (m["key"], m["a"], m["b"], m["decision"], m["why"], m["reviewer"],
+             m["label_source"], dt.datetime.fromisoformat(m["reviewed_at"]))
+            for m in data.get("merges", [])])
+
         # Search status is the node's current state, not evidence: it is updated.
         for table, key, ids in (("events", "event_id", event_id),
                                 ("conditions", "condition_id", cond_id)):
@@ -247,6 +261,8 @@ async def snapshot(connection) -> dict:
             WHERE a.external_id IS NOT NULL ORDER BY a.external_id""",
         "sources": """SELECT external_id, url FROM sources WHERE external_id IS NOT NULL
             ORDER BY external_id""",
+        "merges": """SELECT external_id, node_a, node_b, decision FROM node_merges
+            ORDER BY external_id""",
     }
     return {name: [plain(r) for r in await connection.fetch(sql)] for name, sql in query.items()}
 
@@ -281,7 +297,7 @@ def compile_graph(snap: dict, config: dict) -> bytes:
     primary = {a["claim"]: a for a in snap["annotations"] if a["role"] == "primary"}
     url = {s["external_id"]: s["url"] for s in snap["sources"]}
 
-    edges = []
+    claim_edges = []
     for c in snap["claims"]:
         p = primary.get(c["external_id"])
         if c["verdict"] != "accepted" or p is None:
@@ -299,7 +315,7 @@ def compile_graph(snap: dict, config: dict) -> bytes:
         cause, effect = nodes[(c["cause_kind"], c["cause_id"])], nodes[
             (c["effect_kind"], c["effect_id"])]
         spans = [p["primary_evidence"], *p["supporting_evidence"]]
-        edges.append({
+        claim_edges.append({
             "claim_id": c["external_id"],
             "source": cause["id"], "target": effect["id"],
             "relation": relation_map.get(p["relation_type"], p["relation_type"]),
@@ -318,22 +334,119 @@ def compile_graph(snap: dict, config: dict) -> bytes:
             "review_history": sorted(history[c["external_id"]],
                                      key=lambda h: (h["role"], h["annotator"])),
         })
+    by_id = {n["id"]: n for n in nodes.values()}
+    same = [(m["node_a"], m["node_b"]) for m in snap.get("merges", [])
+            if m["decision"] == "same" and m["node_a"] in by_id and m["node_b"] in by_id]
+    alias = representatives(same if config.get("merge_duplicates", True) else [], by_id)
+    edges, loops = fold(claim_edges, alias, by_id)
     used = {e["source"] for e in edges} | {e["target"] for e in edges}
+    members: dict[str, list[str]] = {}
+    for node, rep in alias.items():
+        members.setdefault(rep, []).append(node)
     graph = {
         "graph_schema": GRAPH_SCHEMA,
         "config": config,
         "store_fingerprint": store_fingerprint,
-        "nodes": sorted((n for n in nodes.values() if n["id"] in used), key=lambda n: n["id"]),
-        "edges": sorted(edges, key=lambda e: e["claim_id"]),
+        "nodes": sorted((merged_node(by_id, n, members.get(n, [])) for n in used),
+                        key=lambda n: n["id"]),
+        "edges": edges,
         "counts": {
             "claims": len(snap["claims"]),
             "accepted_claims": sum(c["verdict"] == "accepted" for c in snap["claims"]),
             "rejected_claims": sum(c["verdict"] == "rejected" for c in snap["claims"]),
+            "claim_edges": len(claim_edges),
             "edges": len(edges),
             "nodes": len(used),
+            "nodes_merged_away": sum(len(v) for v in members.values()),
+            "self_loops_dropped": loops,
+            # Merging can join two branches into a loop the unmerged graph never had.
+            "cycle": find_cycle([{"review_status": "ACCEPTED", "source_event_id": e["source"],
+                                  "target_event_id": e["target"]} for e in edges]),
         },
     }
     return canonical_json(graph)
+
+
+# The more useful status wins when duplicates merge: one of them was searched.
+STATUS_RANK = ("PARENTS_FOUND", "NO_SUPPORTED_PARENT_FOUND", "NOT_YET_REVIEWED",
+               "UNVERIFIABLE", "OUT_OF_SCOPE", None)
+
+
+def representatives(pairs: list[tuple[str, str]], nodes: dict) -> dict[str, str]:
+    """Duplicate node -> the node it merges into, over judged-same pairs. Each
+    cluster keeps one node: an event before a condition, then the smallest id."""
+    parent = {n: n for pair in pairs for n in pair}
+
+    def find(n: str) -> str:
+        while parent[n] != n:
+            parent[n] = parent[parent[n]]
+            n = parent[n]
+        return n
+
+    for a, b in sorted(pairs):
+        parent[find(a)] = find(b)
+    clusters: dict[str, list[str]] = {}
+    for n in parent:
+        clusters.setdefault(find(n), []).append(n)
+    alias: dict[str, str] = {}
+    for group in clusters.values():
+        keep = min(group, key=lambda n: (nodes[n]["kind"] != "event", n))
+        alias |= {n: keep for n in group if n != keep}
+    return alias
+
+
+def merged_node(nodes: dict, keep: str, absorbed: list[str]) -> dict:
+    node = dict(nodes[keep])
+    if absorbed:
+        node["merged_from"] = sorted(absorbed)
+        statuses = [nodes[n]["search_status"] for n in [keep, *absorbed]]
+        node["search_status"] = min(statuses, key=STATUS_RANK.index)
+    return node
+
+
+def host(url: str) -> str:
+    return (urlsplit(url).hostname or "").removeprefix("www.")
+
+
+def fold(claim_edges: list[dict], alias: dict, nodes: dict) -> tuple[list[dict], list[str]]:
+    """Edges between merged nodes: claims joining the same pair become one edge
+    whose evidence is all of theirs; a claim whose two ends merged is dropped."""
+    groups: dict[tuple[str, str], list[dict]] = {}
+    loops = []
+    for e in claim_edges:
+        source, target = alias.get(e["source"], e["source"]), alias.get(e["target"], e["target"])
+        if source == target:
+            loops.append(e["claim_id"])
+            continue
+        groups.setdefault((source, target), []).append(e)
+    edges = []
+    for (source, target), group in sorted(groups.items()):
+        lead = min(group, key=lambda e: (-(e["strength"] or 0),
+                                         e["evidence_quality"] != "explicit", e["claim_id"]))
+        spans = sorted({json.dumps(s, sort_keys=True) for e in group for s in e["evidence"]})
+        evidence = [json.loads(s) for s in spans]
+        urls = sorted({u for e in group for u in e["source_urls"]})
+        edges.append({
+            **{k: lead[k] for k in ("relation", "judged_relation", "machine_relation",
+                                    "strength", "machine_strength", "evidence_quality",
+                                    "temporal_gap_days")},
+            "id": "e:" + hashlib.sha256(f"{source}|{target}".encode()).hexdigest()[:16],
+            "source": source, "target": target,
+            "claim_ids": sorted(e["claim_id"] for e in group),
+            "judged_relations": sorted({e["judged_relation"] for e in group}),
+            "expansion_level": min(e["expansion_level"] for e in group),
+            "source_date": nodes[source].get("date") or nodes[source].get("valid_from"),
+            "target_date": nodes[target].get("date") or nodes[target].get("valid_from"),
+            "evidence": evidence,
+            "source_article_ids": sorted({s["article_id"] for s in evidence}),
+            "source_urls": urls,
+            # Independent outlets carrying the link, across every merged claim.
+            "corroboration_count": len({host(u) for u in urls}),
+            "review_history": sorted(
+                ({**h, "claim_id": e["claim_id"]} for e in group for h in e["review_history"]),
+                key=lambda h: (h["claim_id"], h["role"], h["annotator"])),
+        })
+    return sorted(edges, key=lambda e: e["id"]), sorted(loops)
 
 
 def version(graph: bytes) -> str:

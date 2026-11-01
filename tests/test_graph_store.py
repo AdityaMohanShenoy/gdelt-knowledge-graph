@@ -109,11 +109,35 @@ def test_load_is_idempotent_and_builds_are_byte_identical():
 
     one, stricter = run(body)
     graph, strict = json.loads(one), json.loads(stricter)
-    assert [e["claim_id"] for e in graph["edges"]] == ["cl:1", "cl:2"]
-    assert [e["claim_id"] for e in strict["edges"]] == ["cl:1"]
+    by_claim = {tuple(e["claim_ids"]): e for e in graph["edges"]}
+    assert set(by_claim) == {("cl:1",), ("cl:2",)}
+    assert [e["claim_ids"] for e in strict["edges"]] == [["cl:1"]]
     # The second annotator's rejection travels with the edge it disputes.
-    history = graph["edges"][1]["review_history"]
-    assert {h["action"] for h in history} == {"accept", "reject"}
-    assert graph["edges"][0]["evidence"][0]["text"] == SPAN["text"]
-    assert graph["edges"][0]["source_urls"] == ["https://example.test/a"]
+    assert {h["action"] for h in by_claim[("cl:2",)]["review_history"]} == {"accept", "reject"}
+    assert by_claim[("cl:1",)]["evidence"][0]["text"] == SPAN["text"]
+    assert by_claim[("cl:1",)]["source_urls"] == ["https://example.test/a"]
     assert {n["id"]: n["search_status"] for n in graph["nodes"]}["ce:protest"] == "PARENTS_FOUND"
+
+
+def test_judged_duplicates_merge_at_build_and_the_store_keeps_both_nodes():
+    merges = [{"key": "ce:arrest|ce:rally", "a": "ce:arrest", "b": "ce:rally",
+               "decision": "same", "why": "same arrest", "reviewer": "Claude (AI)",
+               "label_source": "ai_assisted", "reviewed_at": "2026-11-01T00:00:00+00:00"}]
+
+    async def body(connection, schema):
+        await load(connection, {**DATA, "merges": merges})
+        snap = await snapshot(connection)
+        return (compile_graph(snap, {}), compile_graph(snap, {"merge_duplicates": False}),
+                await connection.fetchval("SELECT count(*) FROM events"))
+
+    merged, apart, events = run(body)
+    graph = json.loads(merged)
+    assert events == 3  # merging is an alias at build time; both nodes stay in the store
+    # Both claims now join the same pair, so they fold into one edge with both claims.
+    [edge] = graph["edges"]
+    assert edge["source"] == "ce:arrest" and edge["claim_ids"] == ["cl:1", "cl:2"]
+    assert edge["strength"] == 1.0  # the strongest claim leads
+    node = {n["id"]: n for n in graph["nodes"]}["ce:arrest"]
+    assert node["merged_from"] == ["ce:rally"]
+    assert graph["counts"]["nodes_merged_away"] == 1
+    assert len(json.loads(apart)["edges"]) == 2
