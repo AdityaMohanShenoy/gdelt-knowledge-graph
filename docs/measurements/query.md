@@ -57,6 +57,36 @@ inference and no paid API at query time.
   Enforcement Directorate (ED) arrested" becomes "ED arrested"). The stored
   record is unchanged.
 
+## "What did X lead to?" (`/api/consequences`)
+
+Added after v1.0. It uses the same grounding, ranking and evidence rules as
+`/api/explain`, but reads the graph downstream.
+- **Paths.** Chains start at the event asked about and run to what it led to,
+  up to three links.
+- **Selection.** The best chain is kept per final effect.
+- **Coverage.** It reports the share of the recorded downstream links that the
+  chains carry.
+- **Starting points.** `/api/explain/topics?direction=effects` lists the causes
+  with the most recorded effects. The RG Kar killing leads, with 17 links
+  downstream.
+- **Dashboard.** A "What caused it / What it led to" toggle switches between the
+  two.
+
+**Scope**, stated in every answer: the graph was built by tracing the causes of
+protests. The effects it records are therefore protests and the steps that led
+to them, not every consequence of an event. "Not searched" is not reported
+downstream, because search status records whether someone looked for a node's
+*causes*.
+
+**Example.** *"What did the excise policy case lead to?"*
+1. The excise policy case **escalated into** the ED's arrest of Kejriwal
+   (21 March). The evidence: *"Kejriwal was arrested on March 21 by the ED in
+   connection with the now-scrapped excise policy case."*
+2. The arrest **triggered** the AAP workers' protests (24 March).
+3. Those protests **prompted** the Delhi BJP's counter-protest burning effigies.
+
+The answer covers 75% of the recorded downstream links: 4 of 6 direct effects.
+
 ## Deployment decision
 
 The runtime used to read exactly one file, the GDELT parquet (see `CLAUDE.md`).

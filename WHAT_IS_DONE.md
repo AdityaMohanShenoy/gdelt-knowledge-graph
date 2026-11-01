@@ -280,6 +280,17 @@ The answer covers 73% of the recorded causes, 5 of 8 direct causes.
 The answer never invents a link, and a test checks that every arrow it cites
 exists in the graph. Each link is marked "Checked by a person".
 
+**The other direction: "What did X lead to?"** A toggle on the tab switches to
+consequences, served by `/api/consequences`.
+
+*"What did the excise policy case lead to?"*
+1. The excise policy case **escalated into** Kejriwal's arrest.
+2. The arrest **triggered** the AAP workers' protests.
+3. Those protests **prompted** the BJP's counter-protest.
+
+Because the graph was built by tracing the causes of protests, the effects it
+knows are protests and the steps toward them, and the answer says so.
+
 **Report:** `query.md`
 
 ---

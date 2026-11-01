@@ -153,17 +153,21 @@ def node_date(node: dict) -> str | None:
     return node.get("date") or (node.get("valid_from") if node.get("valid_from_stated") else None)
 
 
-def paths_to(graph: Graph, target: str, depth: int = MAX_DEPTH) -> list[list[dict]]:
-    """Every cause chain ending at `target`, up to `depth` edges, as edge lists
-    ordered cause -> effect. The graph is acyclic, so this terminates."""
+def paths_to(graph: Graph, target: str, depth: int = MAX_DEPTH,
+             direction: str = "causes") -> list[list[dict]]:
+    """Every chain ending at `target` (causes) or starting from it (effects), up to
+    `depth` edges, as edge lists ordered cause -> effect. The graph is acyclic,
+    so this terminates."""
     found = []
+    upstream = direction == "causes"
 
     def walk(node: str, chain: list[dict]) -> None:
-        for e in sorted(graph.parents.get(node, []), key=lambda e: e["id"]):
-            path = [e, *chain]
+        links = graph.parents if upstream else graph.children
+        for e in sorted(links.get(node, []), key=lambda e: e["id"]):
+            path = [e, *chain] if upstream else [*chain, e]
             found.append(path)
             if len(path) < depth:
-                walk(e["source"], path)
+                walk(e["source"] if upstream else e["target"], path)
 
     walk(target, [])
     return found
@@ -181,57 +185,77 @@ def path_score(path: list[dict], relevance: dict[str, float], top: float) -> flo
     return round(score * (0.5 + 0.5 * fit), 6)
 
 
-def ancestors(graph: Graph, targets: list[str], depth: int = MAX_DEPTH) -> tuple[set, set]:
-    """Nodes and edges within `depth` causal steps above the targets."""
+def ancestors(graph: Graph, targets: list[str], depth: int = MAX_DEPTH,
+              direction: str = "causes") -> tuple[set, set]:
+    """Nodes and edges within `depth` causal steps above the targets (causes) or
+    below them (effects)."""
+    upstream = direction == "causes"
     nodes, edges, level = set(targets), set(), set(targets)
     for _ in range(depth):
         nxt = set()
         for n in level:
-            for e in graph.parents.get(n, []):
+            for e in (graph.parents if upstream else graph.children).get(n, []):
                 edges.add(e["id"])
-                if e["source"] not in nodes:
-                    nxt.add(e["source"])
+                other = e["source"] if upstream else e["target"]
+                if other not in nodes:
+                    nxt.add(other)
         nodes |= nxt
         level = nxt
     return nodes, edges
 
 
+EFFECTS_SCOPE = ("The graph was built by tracing the causes of protests, so the effects it "
+                 "records are protests and the steps that led to them, not every consequence.")
+
+
 def explain(graph: Graph, question: str, cluster: int | None = None, k: int = 5,
-            node: str | None = None) -> dict:
-    """`node` skips grounding: the caller already picked the event (a topic list)."""
+            node: str | None = None, direction: str = "causes") -> dict:
+    """Why did X happen (direction="causes"), or what did X lead to ("effects").
+    `node` skips grounding: the caller already picked the event (a topic list)."""
+    if direction not in ("causes", "effects"):
+        raise ValueError(f"direction must be causes or effects, not {direction!r}")
+    upstream = direction == "causes"
     if node is not None:
         if node not in graph.nodes:
             return {"status": "no_match", "question": question, "graph_version": graph.version}
-        question = question or f"Why did this happen: {label(graph.nodes[node])}?"
+        question = question or (f"Why did this happen: {label(graph.nodes[node])}?" if upstream
+                                else f"What did this lead to: {label(graph.nodes[node])}?")
         grounding: dict = {"status": "ok", "cluster": graph.component[node], "targets": [node],
                      "scores": {**graph.relevance(label(graph.nodes[node])), node: 1.0}}
     else:
         grounding = ground(graph, question, cluster)
     if grounding["status"] != "ok":
-        return {**grounding, "question": question, "graph_version": graph.version}
+        return {**grounding, "question": question, "graph_version": graph.version,
+                "direction": direction}
     scores, targets = grounding["scores"], grounding["targets"]
     top = max(scores[t] for t in targets)
-    candidates = [p for t in targets for p in paths_to(graph, t)]
+    candidates = [p for t in targets for p in paths_to(graph, t, direction=direction)]
     ranked = sorted(candidates, key=lambda p: (-path_score(p, scores, top),
                                               [e["id"] for e in p]))
-    # Keep the best chain per root cause, so one cause does not fill every slot.
-    chosen, roots = [], set()
+    # Keep the best chain per far end (root cause, or final effect), so one does
+    # not fill every slot.
+    chosen, ends = [], set()
     for p in ranked:
-        if p[0]["source"] in roots:
+        end = p[0]["source"] if upstream else p[-1]["target"]
+        if end in ends:
             continue
-        roots.add(p[0]["source"])
+        ends.add(end)
         chosen.append(p)
         if len(chosen) == k:
             break
-    sub_nodes, sub_edges = ancestors(graph, targets)
+    sub_nodes, sub_edges = ancestors(graph, targets, direction=direction)
     covered = {e["id"] for p in chosen for e in p}
     total = sum(graph.edges[e]["strength"] or 0 for e in sub_edges)
-    direct = {e["id"] for t in targets for e in graph.parents.get(t, [])}
+    links = graph.parents if upstream else graph.children
+    direct = {e["id"] for t in targets for e in links.get(t, [])}
+    # Search status says whether anyone looked for a node's causes; it has no
+    # meaning downstream.
     unexplored = sorted(n for n in sub_nodes
-                        if graph.nodes[n]["search_status"] not in
+                        if upstream and graph.nodes[n]["search_status"] not in
                         ("PARENTS_FOUND", "NO_SUPPORTED_PARENT_FOUND"))
     return {
         "status": "ok",
+        "direction": direction,
         "question": question,
         "graph_version": graph.version,
         "cluster": grounding["cluster"],
@@ -242,18 +266,19 @@ def explain(graph: Graph, question: str, cluster: int | None = None, k: int = 5,
                    "edges": [edge_card(e) for e in p],
                    "text": sentence(graph, p)} for p in chosen],
         "coverage": {
-            # Share of the targets' causal support, by edge strength, that the
-            # returned paths account for.
+            # Share of the recorded links above (or below) the targets, by edge
+            # strength, that the returned paths account for.
             "strength_share": round(
                 sum(graph.edges[e]["strength"] or 0 for e in covered & sub_edges) / total, 4)
             if total else 0.0,
-            "direct_causes_shown": len(covered & direct),
-            "direct_causes": len(direct),
+            "direct_shown": len(covered & direct),
+            "direct_total": len(direct),
             "edges_in_subgraph": len(sub_edges),
             "nodes_in_subgraph": len(sub_nodes),
             "not_searched": [node_card(graph, n, scores) for n in unexplored],
         },
         "subgraph": {"nodes": sorted(sub_nodes), "edges": sorted(sub_edges)},
+        "scope_note": None if upstream else EFFECTS_SCOPE,
         "labels": {"edges": len(graph.edges),
                    "human_verified": sum(bool(e.get("human_verified"))
                                          for e in graph.edges.values())},
