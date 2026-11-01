@@ -19,7 +19,7 @@ from 139 articles.
 | Every excluded record has a reason | **Met** | 161/161 `UNSUITABLE` records have an exclusion reason |
 | All benchmark NER records are confirmed against the whole article | **Not met** | 0/300 have `gold_entities`. Phase 3 was never run. It is the plan's first cut line |
 | The test set was never used for tuning | **Met** | Test was scored once, with the final ranker (`focal_baseline.md`) |
-| Every causal edge is human-verified, with source evidence | **Partly met** (updated below) | Every edge has a verbatim evidence span. A person has reviewed every edge an independent AI re-check doubted: 92 of the 176 remaining edges are human-verified, and 31 were rejected and removed. The 83 edges every AI pass agreed on are not human-reviewed yet |
+| Every causal edge is human-verified, with source evidence | **Met** (2026-11-01) | Every edge has a verbatim evidence span, and the repo owner reviewed all 207 edges of graph `8744efdb`: 176 accepted and 31 rejected and removed. All 176 edges in graph `85204eba` are human-verified |
 | Rejected candidates are preserved | **Met** | 2,504 rejected claims with reasons, in `text_graph.claims` and `annotations` (`graph_build.md`) |
 | The graph builds reproducibly from versioned inputs | **Met** | Byte-identical rebuilds; a threshold change gives a new version (`graph_build.md`) |
 | Evaluation reports are saved with hashes | **Met** | Every measurement doc lists its artifacts' SHA-256; this report lists them all below |
@@ -204,15 +204,26 @@ on the review page.
 The dashboard marks each link "Checked by a person" or "AI-annotated", and its
 footer gives the counts.
 
-**Still open.** The 83 low-risk edges are not human-reviewed. The evidence says
-they are the safest, since every AI pass agreed and the person never rejected
-an edge the blind judge accepted. But "every edge human-verified" holds only
-once they're read too.
+**Low-risk tier, reviewed afterwards.** The owner accepted all 83. The one
+"unsure" edge was accepted in conversation: Wangchuk's fast, motivated by
+Chinese encroachment, with the article's quote "to protest what locals call
+encroachment by China". The blind judge's rejection of it had confused it with
+a later march. It is recorded as its own human verdict
+(`human-edge-review.v3.jsonl`).
+
+**Final: graph `85204eba8c8d6053`.** 176 edges over 187 nodes, **176 / 176
+human-verified**, 31 human-rejected claims kept as hard negatives. No cycles,
+and rebuilding gives identical bytes.
+
+**What the review says about the AI.**
+- The original AI judges accepted 207 edges, and a person rejected 31: 15% of
+  the AI's accepted edges were wrong.
+- All 31 were among the 59 edges a blind AI re-check rejected, and none among
+  the 148 it accepted.
 
 ## What it would take to meet the plan
 
-1. **Finish the human edge review.** The 83 low-risk edges remain. They are
-   still on the review page under "Low risk". The review history already stores a human
+1. **Human edge review.** Done (2026-11-01). Every edge is human-verified. The review history already stores a human
    verdict as its own annotation, so this adds rows without rewriting anything.
 2. **NER benchmark on the test split.** 48 articles at about 13 entities each.
    It is needed only to measure an NER model; nothing in the causal graph
@@ -275,3 +286,5 @@ Hashes of every measurement report and the main artifacts, at this release:
 | `data/evidence/events/protest-review-300.edges.v1.human-spotcheck.jsonl` | `a4c45f0b332ebcdd6db1fd750e5d810893cf073b56bd2fbbd4e88df5f4957478` |
 | `data/evidence/graph/human-edge-review.v1.jsonl` (owner's verdicts, 154 claims) | `4297deb4c16780ef9c92b3801c00e0c9d8d24995bdc46f549a8767e1b83f16ed` |
 | `out/causal_graph.json` (graph `0676f082`, after human review) | `0676f082dd4a2c4b713eaec23db33bdc4d81f939452e9e3211963e34213d5fcf` |
+| `data/evidence/graph/human-edge-review.v3.jsonl` (all 207 edges reviewed, 238 claims) | `0d28bd08d260848e1a3ad7ab0f95b0b5a1f747718d09163f55c0c263c3015315` |
+| `out/causal_graph.json` (graph `85204eba`, every edge human-verified) | `85204eba8c8d6053b93eee9c93b9add3573e8250bb6925d83227870e9ecad064` |
