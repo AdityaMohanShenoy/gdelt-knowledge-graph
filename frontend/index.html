@@ -628,6 +628,8 @@ body::after {
 .why-link-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-mid); }
 .why-rel { color: var(--rel, var(--amber)); font-weight: 700; font-size: 12px; }
 .why-pips { font-family: var(--mono); color: var(--rel, var(--amber)); letter-spacing: 1px; }
+.why-check { font-size: 10.5px; color: var(--text-dim); border: 1px solid var(--surf3); border-radius: 3px; padding: 0 5px; }
+.why-check.yes { color: var(--emerald); border-color: var(--emerald); }
 .why-quote {
   font-size: 12.5px; color: var(--text); line-height: 1.5; max-width: 72ch;
   padding: 6px 10px; background: var(--bg); border-radius: 3px;
@@ -2112,6 +2114,7 @@ function whyLink(e) {
       <span class="why-rel">${esc(WHY_VERB[e.relation] || e.relation)}</span>
       <span class="why-pips" title="Strength ${strength} of 3">${pips}</span>
       <span>${e.evidence_quality === 'explicit' ? 'Stated in the text' : 'Implied by the text'}, ${outlets}${lag}</span>
+      <span class="why-check${e.human_verified ? ' yes' : ''}">${e.human_verified ? 'Checked by a person' : 'AI-annotated'}</span>
     </div>
     <div class="why-quote"><q>${esc(quote)}</q></div>
     <div class="why-src">${e.source_urls.map(u =>
@@ -2158,8 +2161,9 @@ function renderWhy(d) {
       : '<p class="why-empty">The graph records no causes for this. Its articles either name none, or every candidate was rejected.</p>'}
     ${unsearched}
     <p class="why-foot">Every link above is a judged record in the causal graph, quoted from the
-      source article. Links were annotated by AI and double-checked on a sample; a human spot-check
-      agreed with 39 of 40. Strength and ranking order the evidence; they are not probabilities.
+      source article. All links were annotated by AI; a person has checked ${d.labels.human_verified}
+      of the graph's ${d.labels.edges}, including every link an independent AI re-check doubted.
+      Strength and ranking order the evidence; they are not probabilities.
       Graph version ${esc(String(d.graph_version).slice(0, 12))}.</p>`;
 }
 

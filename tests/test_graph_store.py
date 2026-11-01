@@ -158,3 +158,26 @@ def test_a_newer_merge_decision_supersedes_an_older_one():
     graph, rows = run(body)
     assert rows == 2  # both decisions stay: the store is append-only
     assert len(json.loads(graph)["edges"]) == 2  # the later "different" wins
+
+
+def test_a_human_verdict_outranks_the_ai_and_is_marked_on_the_edge():
+    review = [
+        {"claim_id": "cl:1", "verdict": "accept", "reason": None, "relation": None, "note": None,
+         "reviewed_at": "2026-11-01T12:00:00Z", "reviewer_id": "human:owner",
+         "label_source": "human"},
+        {"claim_id": "cl:2", "verdict": "reject", "reason": None, "relation": None, "note": None,
+         "reviewed_at": "2026-11-01T12:00:00Z", "reviewer_id": "human:owner",
+         "label_source": "human"},
+    ]
+
+    async def body(connection, schema):
+        await load(connection, {**DATA, "human_review": review})
+        snap = await snapshot(connection)
+        return compile_graph(snap, {}), compile_graph(snap, {"require_human": True})
+
+    graph, strict = (json.loads(g) for g in run(body))
+    # The AI accepted both claims; the person rejected cl:2, so only cl:1 remains.
+    assert [e["claim_ids"] for e in graph["edges"]] == [["cl:1"]]
+    assert graph["edges"][0]["human_verified"] is True
+    assert graph["counts"]["human_rejected_claims"] == 1
+    assert strict["counts"]["edges"] == 1

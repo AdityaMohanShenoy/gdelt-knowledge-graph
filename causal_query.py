@@ -254,7 +254,9 @@ def explain(graph: Graph, question: str, cluster: int | None = None, k: int = 5,
             "not_searched": [node_card(graph, n, scores) for n in unexplored],
         },
         "subgraph": {"nodes": sorted(sub_nodes), "edges": sorted(sub_edges)},
-        "labels": "AI-annotated (ai_assisted); 39 of 40 spot-checked by a human agreed",
+        "labels": {"edges": len(graph.edges),
+                   "human_verified": sum(bool(e.get("human_verified"))
+                                         for e in graph.edges.values())},
     }
 
 
@@ -266,9 +268,10 @@ def node_card(graph: Graph, nid: str, scores: dict) -> dict:
 
 
 def edge_card(e: dict) -> dict:
-    return {k: e[k] for k in ("id", "source", "target", "relation", "strength",
-                              "evidence_quality", "corroboration_count", "temporal_gap_days",
-                              "evidence", "source_urls", "claim_ids")}
+    return {**{k: e[k] for k in ("id", "source", "target", "relation", "strength",
+                                 "evidence_quality", "corroboration_count", "temporal_gap_days",
+                                 "evidence", "source_urls", "claim_ids")},
+            "human_verified": bool(e.get("human_verified"))}
 
 
 VERB = {"TRIGGERS": "triggered", "MOTIVATES": "motivated", "MOBILIZES": "mobilised",
