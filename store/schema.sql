@@ -213,3 +213,61 @@ DROP TRIGGER IF EXISTS annotations_append_only ON annotations;
 CREATE TRIGGER annotations_append_only
     BEFORE UPDATE OR DELETE ON annotations
     FOR EACH ROW EXECUTE FUNCTION evidence_is_append_only();
+
+-- Phase 12: the text pipeline's nodes, evidence and judgements (Phases 7–11).
+-- Pipeline ids (ce:/cc:/cl:/mention ids) are kept as external_id, so a reload
+-- converges instead of duplicating, and every row traces back to its JSONL.
+ALTER TABLE events ADD COLUMN IF NOT EXISTS status TEXT;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS actors JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS targets JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS locations JSONB NOT NULL DEFAULT '[]'::jsonb;
+-- Phase 11: whether anyone looked for this node's causes, and what they found.
+ALTER TABLE events ADD COLUMN IF NOT EXISTS search_status TEXT;
+
+ALTER TABLE conditions ADD COLUMN IF NOT EXISTS external_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS conditions_external_id_idx ON conditions (external_id);
+ALTER TABLE conditions ADD COLUMN IF NOT EXISTS kind TEXT;
+ALTER TABLE conditions ADD COLUMN IF NOT EXISTS role TEXT;
+ALTER TABLE conditions ADD COLUMN IF NOT EXISTS holders JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE conditions ADD COLUMN IF NOT EXISTS locations JSONB NOT NULL DEFAULT '[]'::jsonb;
+-- False when valid_from is the wide fallback guess, not a date the text states.
+ALTER TABLE conditions ADD COLUMN IF NOT EXISTS valid_from_stated BOOLEAN;
+ALTER TABLE conditions ADD COLUMN IF NOT EXISTS search_status TEXT;
+
+-- A mention reports either an event or a condition.
+ALTER TABLE mentions ADD COLUMN IF NOT EXISTS external_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS mentions_external_id_idx ON mentions (external_id);
+ALTER TABLE mentions ADD COLUMN IF NOT EXISTS condition_id BIGINT REFERENCES conditions (condition_id);
+-- The cleaned text the offsets index into, pinned by hash; the text itself
+-- stays on the evidence volume.
+ALTER TABLE mentions ADD COLUMN IF NOT EXISTS text_sha256 TEXT;
+ALTER TABLE mentions ADD COLUMN IF NOT EXISTS spans JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE mentions ADD COLUMN IF NOT EXISTS reviewer TEXT;
+ALTER TABLE mentions ADD COLUMN IF NOT EXISTS label_source TEXT;
+
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS external_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS claims_external_id_idx ON claims (external_id);
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS retriever TEXT;
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS signals JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS temporal_gap_days INTEGER;
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS expansion_level INTEGER;
+-- Null until a model predicts relations; never a retrieval score in disguise.
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS machine_relation_type TEXT;
+
+ALTER TABLE annotations ADD COLUMN IF NOT EXISTS external_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS annotations_external_id_idx ON annotations (external_id);
+-- Exact spans into the cited articles: {article_id, start, end, text}.
+ALTER TABLE annotations ADD COLUMN IF NOT EXISTS primary_evidence JSONB;
+ALTER TABLE annotations ADD COLUMN IF NOT EXISTS supporting_evidence JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE annotations ADD COLUMN IF NOT EXISTS evidence_quality TEXT;
+ALTER TABLE annotations ADD COLUMN IF NOT EXISTS corroboration_count INTEGER;
+-- When the judgement was made, as distinct from when the row was loaded.
+ALTER TABLE annotations ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+ALTER TABLE annotations ADD COLUMN IF NOT EXISTS label_source TEXT;
+-- primary / second / spot-check: which pass of review this judgement was.
+ALTER TABLE annotations ADD COLUMN IF NOT EXISTS role TEXT;
+-- The pipeline grades a date high/medium/low; it never computed a probability,
+-- so the label is kept rather than invented as a number for time_confidence.
+ALTER TABLE events ADD COLUMN IF NOT EXISTS time_confidence_label TEXT;
+-- The pipeline's article id, so an edge's evidence spans resolve to their URLs.
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS external_id TEXT;

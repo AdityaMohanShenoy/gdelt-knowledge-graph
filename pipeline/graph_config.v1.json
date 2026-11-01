@@ -1,0 +1,8 @@
+{
+  "relation_map": {"CONTRIBUTES_TO": "MOTIVATES"},
+  "kinds": ["event", "condition"],
+  "evidence_quality": ["explicit", "implicit"],
+  "min_strength": 0,
+  "min_corroboration": 0,
+  "include_ai_labels": true
+}

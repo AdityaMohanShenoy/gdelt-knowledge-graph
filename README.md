@@ -443,6 +443,13 @@ uv run python pipeline/25_expand.py --canonical data/evidence/events/protest-rev
 uv run python pipeline/22_retrieve_causes.py --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --mentions data/evidence/events/protest-review-300.conditions.v1.mentions.jsonl --canonical data/evidence/events/protest-review-300.canonical.v4.jsonl --conditions data/evidence/events/protest-review-300.canonical-conditions.v1.jsonl --condition-mentions data/evidence/events/protest-review-300.conditions.v1.jsonl --grievance-days 180 --targets data/evidence/events/protest-review-300.expansion.lN.targets.json --edges <edges per level...> --output data/evidence/events/protest-review-300.claims.lN+1.jsonl
 ```
 
+Load everything into the evidence store and build the graph (Phase 12). The loader writes to its own `text_graph` schema and is idempotent. The build is a pure function of the store and a config: the same inputs give byte-identical output, named by its SHA-256, and a changed threshold gives a new version. Results are in `docs/measurements/graph_build.md`.
+
+```bash
+uv run python pipeline/26_load_store.py --schema text_graph
+uv run python pipeline/40_build_graph.py --schema text_graph --config pipeline/graph_config.v1.json --register
+```
+
 Stored inference results can be audited without model inference or annotations:
 
 ```bash
