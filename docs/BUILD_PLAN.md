@@ -737,6 +737,21 @@ one threshold yields a new version without touching the evidence store.
   reads one data source (see `CLAUDE.md`), so decide deliberately how the
   compiled graph deploys.
 
+**Done 2026-11-01 (`docs/measurements/query.md`).**
+- **The tab.** The Causal Evidence tab now answers "why did this happen?"
+  (`causal_query.py`, `/api/explain`). BM25 grounding asks back when several
+  stories match. Cause chains up to three links are ranked by strength,
+  evidence quality, corroboration and fit to the question.
+- **Coverage.** Each answer reports its share of the target's causal support,
+  how many direct causes it shows, and the ancestors nobody searched.
+- **Prose.** It is filled only from edge records, quotes included. A test checks
+  that every cited relation exists in the graph.
+- **Deployment.** The compiled graph ships as a second committed runtime file,
+  `out/causal_graph.json` (360 KB), read only by `/api/explain*`.
+- **Grounding.** 58 / 58 protests ground correctly from their headlines. Of 12
+  reworded questions, 11 ground correctly and 1 asks back with the right story
+  first.
+
 ---
 
 ## Phase 14 — Final evaluation and release
