@@ -701,6 +701,19 @@ database. Every edge keeps:
 **Accept when.** Two builds with the same config are byte-identical, and changing
 one threshold yields a new version without touching the evidence store.
 
+**Done 2026-11-01 (`docs/measurements/graph_build.md`).**
+- **Load.** `pipeline/26_load_store.py` loads Phases 7–11 into a `text_graph`
+  schema. The GDELT-era `public` rows are untouched. The load is 139 sources,
+  1,073 events, 200 conditions, 1,368 mentions, 2,748 claims (2,504 of them
+  rejected and kept) and 3,521 annotations. It is idempotent.
+- **Build.** `pipeline/40_build_graph.py` compiles graph `57acd8f502198625`: 244
+  edges and 212 nodes. Each edge carries spans, URLs, dates, strength and its
+  full review history.
+- **Determinism.** Two builds are byte-identical, and `min_strength: 0.5` gives
+  a new version (171 edges) with the evidence row counts unchanged.
+- **Not yet done.** Entities are not resolved, and the annotator does not read
+  `text_graph` yet.
+
 ---
 
 ## Phase 13 — Query and explanation
