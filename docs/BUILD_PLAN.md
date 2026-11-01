@@ -794,7 +794,9 @@ by this definition.**
 - **Human review (2026-11-01).** Every edge a blind AI re-check doubted, plus
   the quick-check tier, was reviewed by the repo owner: 124 edges, 31 rejected.
   Graph `0676f082` has 176 edges, 92 of them human-verified. The 83 low-risk
-  edges are still unreviewed.
+  edges were reviewed afterwards: all accepted, and the one "unsure" was
+  accepted too. **Graph `85204eba`: all 176 edges are human-verified.** The
+  criterion still not met is the NER benchmark.
 
 ---
 
