@@ -196,6 +196,33 @@ all 197, "different" ones included.
 
 Both are recorded with their reasons in `node-merges.v1.jsonl`.
 
+## Correction: the MSP merge (2026-11-01)
+
+The Phase 14 blind re-check rejected all 4 links from the merged MSP node as
+`WRONG_EVENT_MATCH`. Their sentences mixed the 10 March rail roko, the border
+camp and old promises.
+
+**What went wrong.** Decision d133 had merged two different kinds of node:
+- the MSP-guarantee grievance, a condition reported in 14 articles;
+- one demand event, "the protesting farmers demanding".
+
+Clusters keep their event as the representative, so the 14-article grievance was
+shown as a single dated event. The same-node rubric already says that a
+grievance and the demand to fix it are different, so the merge was wrong.
+
+**Fix.** `node_merges` is append-only, so the decision is not edited.
+`node-merges.v2.jsonl` adds a superseding `different` row for that pair, keyed
+`…#2`, with its reason. The build now applies **the most recent decision per
+pair**, ordered by `reviewed_at`, then `external_id`, and a test covers it.
+
+**Effect.**
+- **Graph:** the new version is `8744efdb37c96eb5`. It still has 207 edges, now
+  over 196 nodes, with 16 merged away and no cycles.
+- **MSP:** the grievance is its own condition node again and explains 12
+  effects. The demand event keeps its single link.
+- **Review page:** 15 link ids changed, because they key on the endpoints. The
+  page was rebuilt from the new graph with its triage carried over by claim id.
+
 ## Not done here
 
 - **Entities are not built.** Actors and places stay as text lists on nodes.
@@ -214,5 +241,7 @@ Both are recorded with their reasons in `node-merges.v1.jsonl`.
 | `pipeline/graph_config.v1.json` | `49c2c821fce2e3f0c6fe5dc9bf2fed61826deaf07b249b0195351021a50d4faf` |
 | `data/evidence/graph/causal-graph.57acd8f502198625.json` (build A, before merging) | `57acd8f5021986256d1c10d59491f95c7ef2ab809eaf75d0498adab163e4cca1` |
 | `data/evidence/graph/causal-graph.7cf84d52e097a387.json` (current, duplicates merged) | `7cf84d52e097a387b00fcd2e9eaf2966a1070410a63786aa26b4e6302aa6c10c` |
+| `out/causal_graph.json` (current, after the MSP correction) | `8744efdb37c96eb51cfcb34cb21188df3430645ca49e179390b15285dc57fbf3` |
+| `data/evidence/graph/node-merges.v2.jsonl` (v1 + 1 superseding decision) | `e0761744af4c9262e8372ca722c57efdc8cd2ab7c3d10e8764f963b816c4aac0` |
 | `data/evidence/graph/node-merges.v1.jsonl` (197 decisions) | `5124510d937a6371a1d93d0cb7a9413fc9f061c6d1cec7633040306973731b32` |
 | `docs/same-node-rubric.md` | `1c494f5ed950fb51861b7e8690f409f1f5c4046bb4d7400d157b384295a0fd9a` |
