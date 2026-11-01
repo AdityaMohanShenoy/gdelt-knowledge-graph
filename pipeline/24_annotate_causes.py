@@ -74,7 +74,8 @@ def packets(args: argparse.Namespace) -> dict:
     by_seed: dict[str, list[dict]] = {}
     for c in claims:
         by_seed.setdefault(c["effect_event_id"], []).append(c)
-    short = {s: s.removeprefix("ce:")[:6] for s in by_seed}
+    # Protest ids keep their Phase 10 form; condition targets (Phase 11) get a "k".
+    short = {s: s[3:9] if s.startswith("ce:") else "k" + s[3:8] for s in by_seed}
     if len(set(short.values())) != len(short):
         raise ValueError("Seed id prefixes collide")
 
@@ -82,7 +83,15 @@ def packets(args: argparse.Namespace) -> dict:
     double = double_sample(claims, args.double, "phase-10")
     packets_by_seed = {}
     for seed_id, group in by_seed.items():
-        seed = events[seed_id]
+        if seed_id in events:
+            node = events[seed_id]
+            effect_fields = {"kind": "event", "date": node["best_time"],
+                             "actors": node["actors"], "locations": node["locations"]}
+        else:
+            node = conditions[seed_id]
+            effect_fields = {"kind": "condition", "condition": node["description"],
+                             "first_reported": min(node["observed"]),
+                             "holders": node["holders"], "locations": node["locations"]}
         effect_mentions = mentions(group[0]["evidence"]["effect"])
         effect_articles = sorted({e["article_id"] for e in group[0]["evidence"]["effect"]})
         candidates = []
@@ -120,9 +129,7 @@ def packets(args: argparse.Namespace) -> dict:
         packets_by_seed[seed_id] = {
             "seed_id": short[seed_id],
             "effect": {
-                "date": seed["best_time"],
-                "actors": seed["actors"],
-                "locations": seed["locations"],
+                **effect_fields,
                 "sentences": sorted({e["sentence"] for e in group[0]["evidence"]["effect"]}),
             },
             "effect_articles": [

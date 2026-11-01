@@ -665,6 +665,20 @@ acyclic by construction.
 **Accept when.** A seed expands to a multi-level DAG, branches converge on shared
 nodes, and a cycle check finds none.
 
+**Done 2026-11-01 (`docs/measurements/expansion.md`), with AI annotators.**
+- **Graph.** 63 protests expand to depth 3: 216 nodes and 244 accepted edges,
+  from 2,748 judged candidates.
+- **Convergence.** 49 causes are shared. The top one, the legal-MSP grievance,
+  explains 14 effects.
+- **Cycles.** None. A target's own descendants are never proposed as its causes.
+- **Branching.** 2.5 accepted parents per protest, then 0.6, then 1.4. GATE 11's
+  explosion does not happen.
+- **Search status.** Every reached node has one. `OUT_OF_SCOPE` was added for
+  pre-2024 nodes.
+- **Human spot-check of Phase 10.** 39 of 40 agree.
+- **Limits.** Duplicate cause nodes (RG Kar exists as two) inflate convergence.
+  The 5 depth-3 frontier nodes are left `NOT_YET_REVIEWED`.
+
 ---
 
 ## Phase 12 — Graph storage and build
