@@ -791,6 +791,10 @@ by this definition.**
 - **External check 2.** Rebuilt for the final text pipeline, because `31_` tests
   the retired GDELT scorer. Accepts were 0/60 unrelated pairs, 0/35 valid future
   pairs (one control was mis-dated) and 27/32 real positives.
+- **Human review (2026-11-01).** Every edge a blind AI re-check doubted, plus
+  the quick-check tier, was reviewed by the repo owner: 124 edges, 31 rejected.
+  Graph `0676f082` has 176 edges, 92 of them human-verified. The 83 low-risk
+  edges are still unreviewed.
 
 ---
 

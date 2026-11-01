@@ -19,7 +19,7 @@ from 139 articles.
 | Every excluded record has a reason | **Met** | 161/161 `UNSUITABLE` records have an exclusion reason |
 | All benchmark NER records are confirmed against the whole article | **Not met** | 0/300 have `gold_entities`. Phase 3 was never run. It is the plan's first cut line |
 | The test set was never used for tuning | **Met** | Test was scored once, with the final ranker (`focal_baseline.md`) |
-| Every causal edge is human-verified, with source evidence | **Not met** | Every edge has a verbatim evidence span, but every judgement is AI. Human review covers 40 edges (39 agree) |
+| Every causal edge is human-verified, with source evidence | **Partly met** (updated below) | Every edge has a verbatim evidence span. A person has reviewed every edge an independent AI re-check doubted: 92 of the 176 remaining edges are human-verified, and 31 were rejected and removed. The 83 edges every AI pass agreed on are not human-reviewed yet |
 | Rejected candidates are preserved | **Met** | 2,504 rejected claims with reasons, in `text_graph.claims` and `annotations` (`graph_build.md`) |
 | The graph builds reproducibly from versioned inputs | **Met** | Byte-identical rebuilds; a threshold change gives a new version (`graph_build.md`) |
 | Evaluation reports are saved with hashes | **Met** | Every measurement doc lists its artifacts' SHA-256; this report lists them all below |
@@ -153,10 +153,66 @@ old fusion scorer lacked.
 - **Query.** Live on the dashboard's Causal Evidence tab. It clarifies
   ambiguous questions, reports coverage, and lists unsearched ancestors.
 
+## Human edge review (2026-11-01)
+
+**Blind AI re-check.** Three fresh judges re-judged all 207 edges of graph
+`8744efdb` without seeing earlier votes, relations, strengths or chosen quotes.
+203 earlier rejects were mixed in.
+- **Graph edges:** 148 accepted again, 59 rejected.
+- **Earlier rejects:** 18 accepted.
+- **Rejection rate by link type:** 40% of edges joined by a node merge against
+  25% of plain edges; 24% at depth 1, 31% at depth 2 and 62% at depth 3.
+- **A wrong merge.** The pass exposed one: the MSP grievance had been merged
+  with a single demand event. It was superseded (`graph_build.md`).
+
+**Triage.**
+
+| Tier | Edges | What put an edge there |
+|---|---:|---|
+| Needs you | 64 | The blind judge rejected it, the AI judges disagreed, or the cause is dated after the effect |
+| Quick check | 60 | It exists only through a node merge, or it is a weak or implied link |
+| Low risk | 83 | Every AI pass agrees and no date problem |
+
+**The repo owner's review** covered all 124 "needs you" and "quick check" edges
+on the review page.
+
+| | Accepted | Rejected | Unsure |
+|---|---:|---:|---:|
+| Needs you (64) | 32 | 31 | 1 |
+| Quick check (60) | 60 | 0 | 0 |
+
+- **Every human rejection was an edge the blind judge had also rejected.** The
+  person never rejected a blind-accepted edge, and overrode 27 of the blind
+  judge's rejections.
+- **Agreement with the blind judge:** 96 / 123 decided edges.
+- **Against the original AI judge,** which had accepted all of them: 31 / 123
+  (25%) of reviewed edges were wrong. In the "needs you" tier it was about half.
+
+**Applied.**
+- **Storage:** the verdicts are stored as `human-review` annotations (153; the
+  one "unsure" leaves the AI's call). Rejects carry `OTHER`, "no reason given",
+  because the page recorded none.
+- **Precedence:** a human verdict outranks every AI judgement in the build.
+- **Each edge records** whether a person checked it (`human_verified`). A
+  `require_human` config builds only verified edges.
+
+**Graph `0676f082dd4a2c4b`:**
+- 176 edges over 187 nodes, no cycles, byte-identical rebuild.
+- 92 human-verified edges, including 7 of the 8 at depth 3.
+- 57 protests keep at least one cause.
+
+The dashboard marks each link "Checked by a person" or "AI-annotated", and its
+footer gives the counts.
+
+**Still open.** The 83 low-risk edges are not human-reviewed. The evidence says
+they are the safest, since every AI pass agreed and the person never rejected
+an edge the blind judge accepted. But "every edge human-verified" holds only
+once they're read too.
+
 ## What it would take to meet the plan
 
-1. **Human edge review.** Review the 207 graph edges, starting with the 6
-   that a second AI annotator disputed and the depth-2/3 chains. The review history already stores a human
+1. **Finish the human edge review.** The 83 low-risk edges remain. They are
+   still on the review page under "Low risk". The review history already stores a human
    verdict as its own annotation, so this adds rows without rewriting anything.
 2. **NER benchmark on the test split.** 48 articles at about 13 entities each.
    It is needed only to measure an NER model; nothing in the causal graph
@@ -217,3 +273,5 @@ Hashes of every measurement report and the main artifacts, at this release:
 | `data/evidence/events/protest-review-300.edges.l3.jsonl` | `6bbf58f8b1718b712026853f21b777ffa460f7efd1068356bf426a1f41ff718b` |
 | `data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl` | `100cbfa34758c90cdcb1f5bcce3a555329d8fc8d8c668deee1d653bded3da079` |
 | `data/evidence/events/protest-review-300.edges.v1.human-spotcheck.jsonl` | `a4c45f0b332ebcdd6db1fd750e5d810893cf073b56bd2fbbd4e88df5f4957478` |
+| `data/evidence/graph/human-edge-review.v1.jsonl` (owner's verdicts, 154 claims) | `4297deb4c16780ef9c92b3801c00e0c9d8d24995bdc46f549a8767e1b83f16ed` |
+| `out/causal_graph.json` (graph `0676f082`, after human review) | `0676f082dd4a2c4b713eaec23db33bdc4d81f939452e9e3211963e34213d5fcf` |

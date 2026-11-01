@@ -36,7 +36,7 @@ def day(text: str | None) -> dt.datetime | None:
 def gather(annotations: Path, mentions: Path, canonical: Path, conditions: Path,
            condition_mentions: Path, levels: list[tuple[Path, Path, Path]],
            status: Path, spot_check: Path | None = None,
-           merges: Path | None = None) -> dict:
+           merges: Path | None = None, human_review: Path | None = None) -> dict:
     """Everything to load, from the pipeline's files. `levels` is one
     (claims, primary edges, second edges) triple per expansion level, in order."""
     articles = {}
@@ -75,6 +75,7 @@ def gather(annotations: Path, mentions: Path, canonical: Path, conditions: Path,
         "status": {s["node_id"]: s["search_status"] for s in rows(status)},
         "spot_check": rows(spot_check) if spot_check else [],
         "merges": rows(merges) if merges else [],
+        "human_review": rows(human_review) if human_review else [],
     }
 
 
@@ -199,6 +200,17 @@ async def load(connection, data: dict) -> dict:
                     dt.datetime.fromisoformat(s["reviewed_at"].replace("Z", "+00:00")),
                     s["label_source"], "spot-check")
 
+        def human(r: dict) -> tuple:
+            # A person's verdict on the edge as built; "unsure" leaves the AI's call standing.
+            accepts = r["verdict"] == "accept"
+            return (f"{r['claim_id']}:human-review", claim_id[r["claim_id"]], r["reviewer_id"],
+                    "accept" if accepts else "reject",
+                    None if accepts else (r["reason"] or "OTHER"),
+                    r["note"] or (None if accepts or r["reason"] else "no reason given"),
+                    None, r["relation"], None, "[]", None, None,
+                    dt.datetime.fromisoformat(r["reviewed_at"].replace("Z", "+00:00")),
+                    r["label_source"], "human-review")
+
         await insert("annotations", """
             INSERT INTO annotations (external_id, claim_id, annotator, action, reject_reason,
                 reason_text, human_strength, relation_type, primary_evidence,
@@ -208,7 +220,8 @@ async def load(connection, data: dict) -> dict:
                 $14, $15, NULL)
             ON CONFLICT (external_id) DO NOTHING""",
             [judgement(e) for e in data["edges"]]
-            + [spot(s) for s in data["spot_check"] if s["human_verdict"] != "unsure"])
+            + [spot(s) for s in data["spot_check"] if s["human_verdict"] != "unsure"]
+            + [human(r) for r in data.get("human_review", []) if r["verdict"] != "unsure"])
 
         await insert("node_merges", """
             INSERT INTO node_merges (external_id, node_a, node_b, decision, why, reviewer,
@@ -295,12 +308,18 @@ def compile_graph(snap: dict, config: dict) -> bytes:
             "annotator", "role", "action", "relation_type", "reject_reason", "reviewed_at",
             "label_source")})
     primary = {a["claim"]: a for a in snap["annotations"] if a["role"] == "primary"}
+    # A person's review of the built edge outranks every AI judgement of it.
+    human = {a["claim"]: a for a in snap["annotations"] if a["role"] == "human-review"}
     url = {s["external_id"]: s["url"] for s in snap["sources"]}
 
     claim_edges = []
     for c in snap["claims"]:
         p = primary.get(c["external_id"])
-        if c["verdict"] != "accepted" or p is None:
+        h = human.get(c["external_id"])
+        accepted = h["action"] == "accept" if h else c["verdict"] == "accepted"
+        if not accepted or p is None:
+            continue
+        if config.get("require_human") and not h:
             continue
         if c["cause_kind"] not in config.get("kinds", ["event", "condition"]):
             continue
@@ -317,8 +336,10 @@ def compile_graph(snap: dict, config: dict) -> bytes:
         spans = [p["primary_evidence"], *p["supporting_evidence"]]
         claim_edges.append({
             "claim_id": c["external_id"],
+            "human_verified": h is not None,
             "source": cause["id"], "target": effect["id"],
-            "relation": relation_map.get(p["relation_type"], p["relation_type"]),
+            "relation": relation_map.get((h or {}).get("relation_type") or p["relation_type"],
+                                         (h or {}).get("relation_type") or p["relation_type"]),
             "judged_relation": p["relation_type"],
             "machine_relation": c["machine_relation_type"],
             "strength": p["human_strength"], "machine_strength": c["machine_strength"],
@@ -362,6 +383,8 @@ def compile_graph(snap: dict, config: dict) -> bytes:
             "rejected_claims": sum(c["verdict"] == "rejected" for c in snap["claims"]),
             "claim_edges": len(claim_edges),
             "edges": len(edges),
+            "human_verified_edges": sum(e["human_verified"] for e in edges),
+            "human_rejected_claims": sum(a["action"] == "reject" for a in human.values()),
             "nodes": len(used),
             "nodes_merged_away": sum(len(v) for v in members.values()),
             "self_loops_dropped": loops,
@@ -439,6 +462,7 @@ def fold(claim_edges: list[dict], alias: dict, nodes: dict) -> tuple[list[dict],
             "id": "e:" + hashlib.sha256(f"{source}|{target}".encode()).hexdigest()[:16],
             "source": source, "target": target,
             "claim_ids": sorted(e["claim_id"] for e in group),
+            "human_verified": all(e["human_verified"] for e in group),
             "judged_relations": sorted({e["judged_relation"] for e in group}),
             "expansion_level": min(e["expansion_level"] for e in group),
             "source_date": nodes[source].get("date") or nodes[source].get("valid_from"),
