@@ -436,6 +436,13 @@ uv run python pipeline/24_annotate_causes.py packets --annotations data/evidence
 uv run python pipeline/24_annotate_causes.py apply --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --claims data/evidence/events/protest-review-300.claims.v4.jsonl --key <dir>/key.json --primary <dir>/batch_*.judgements.jsonl --second <dir>/double_*.judgements.jsonl --output data/evidence/events/protest-review-300.edges.v1.jsonl
 ```
 
+Expand recursively (Phase 11): each accepted cause becomes the next target. `25_expand.py` writes the next frontier, every reached node's search status (`PARENTS_FOUND`, `NO_SUPPORTED_PARENT_FOUND`, `NOT_YET_REVIEWED`, `UNVERIFIABLE`, `OUT_OF_SCOPE`), depth, convergence and a cycle check. Retrieval then runs on that frontier. A target's own descendants are excluded, and judging uses `docs/causal-annotation-rubric-v2.md`. Repeat per level. Results are in `docs/measurements/expansion.md`.
+
+```bash
+uv run python pipeline/25_expand.py --canonical data/evidence/events/protest-review-300.canonical.v4.jsonl --conditions data/evidence/events/protest-review-300.canonical-conditions.v1.jsonl --claims <claims per level...> --edges <edges per level...> --targets <earlier .targets.json...> --output data/evidence/events/protest-review-300.expansion.lN.json
+uv run python pipeline/22_retrieve_causes.py --annotations data/evidence/focal_events/protest-review-300.weak.v3.annotations.jsonl --mentions data/evidence/events/protest-review-300.conditions.v1.mentions.jsonl --canonical data/evidence/events/protest-review-300.canonical.v4.jsonl --conditions data/evidence/events/protest-review-300.canonical-conditions.v1.jsonl --condition-mentions data/evidence/events/protest-review-300.conditions.v1.jsonl --grievance-days 180 --targets data/evidence/events/protest-review-300.expansion.lN.targets.json --edges <edges per level...> --output data/evidence/events/protest-review-300.claims.lN+1.jsonl
+```
+
 Stored inference results can be audited without model inference or annotations:
 
 ```bash

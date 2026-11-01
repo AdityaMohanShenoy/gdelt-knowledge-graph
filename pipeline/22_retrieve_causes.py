@@ -51,6 +51,13 @@ def main() -> None:
     parser.add_argument("--conditions", type=Path, help="canonical conditions (v2)")
     parser.add_argument("--condition-mentions", type=Path)
     parser.add_argument("--grievance-days", type=int, default=WINDOW_DAYS)
+    parser.add_argument(
+        "--targets", type=Path, help="JSON list of node ids to find causes for (Phase 11)"
+    )
+    parser.add_argument(
+        "--edges", type=Path, nargs="*", default=[],
+        help="judged edges so far; a target's own descendants are never its candidates",
+    )
     parser.add_argument("--model-manifest", type=Path, default=MODEL_MANIFEST)
     args = parser.parse_args()
     if bool(args.conditions) != bool(args.condition_mentions):
@@ -101,7 +108,12 @@ def main() -> None:
                     }
                 )
             node = condition_node(condition, [r["sentence"] for r in rows])
-            events.append({**node, "evidence": rows})
+            # As an effect, a condition dates from its stated start, else from
+            # its first report: the fallback start is a guess, not a date.
+            day = condition["valid_from"] if condition["valid_from_stated"] else min(
+                condition["observed"]
+            )
+            events.append({**node, "evidence": rows, "effect_day": day})
 
     from sentence_transformers import SentenceTransformer
 
@@ -112,18 +124,50 @@ def main() -> None:
     for (i, _), vector in zip(flat, vectors, strict=True):
         by_event.setdefault(i, []).append(vector)
 
-    seeds = [i for i in range(seeds_only) if is_seed(events[i], mentions, articles)]
+    if args.targets:
+        wanted = set(json.loads(args.targets.read_text()))
+        seeds = [i for i, e in enumerate(events) if e["canonical_event_id"] in wanted]
+        if len(seeds) != len(wanted):
+            raise ValueError("Some targets are not canonical events or conditions")
+    else:
+        seeds = [i for i in range(seeds_only) if is_seed(events[i], mentions, articles)]
+    children: dict[str, set] = {}
+    for path in args.edges:
+        for e in map(json.loads, path.read_text().splitlines()):
+            if e["review_status"] == "ACCEPTED":
+                children.setdefault(e["source_event_id"], set()).add(e["target_event_id"])
+
+    def descendants(node: str) -> set:
+        found, stack = set(), [node]
+        while stack:
+            for child in children.get(stack.pop(), ()):
+                if child not in found:
+                    found.add(child)
+                    stack.append(child)
+        return found
+
     claims = []
     for s in seeds:
         seed = events[s]
+        # An effect of the target cannot also cause it; proposing it would invite a cycle.
+        below = descendants(seed["canonical_event_id"])
+        if "effect_day" in seed:
+            seed = {**seed, "best_time": seed["effect_day"],
+                    "time_range": [seed["effect_day"], seed["effect_day"]]}
         for c, cause in enumerate(events):
             condition = cause.get("cause_kind") == "condition"
             # A condition qualifies when its validity window covers the seed's day.
-            if c == s or not in_window(seed, cause, 0 if condition else args.grievance_days):
+            if c == s or cause["canonical_event_id"] in below:
+                continue
+            if not in_window(seed, cause, 0 if condition else args.grievance_days):
                 continue
             reach = "condition" if condition else "near" if in_window(seed, cause) else "far"
             similarity = max(float(a @ b) for a in by_event[s] for b in by_event[c])
             found = signals(seed, cause, similarity)
+            # ponytail: a condition's causes are proposed only from its own articles;
+            # widen this if expansion of conditions turns out to miss stated causes.
+            if "effect_day" in seed and not found["same_article"]:
+                continue
             if proposed(found, reach):
                 evidence = {"effect": seed["evidence"], "cause": cause["evidence"]}
                 claims.append(claim(seed, cause, found, evidence, retriever))
@@ -146,6 +190,8 @@ def main() -> None:
                 ("annotations", args.annotations),
                 ("mentions", args.mentions),
                 ("canonical", args.canonical),
+                *((p.name, p) for p in args.edges),
+                *((("targets", args.targets),) if args.targets else ()),
                 *(
                     (
                         ("conditions", args.conditions),
