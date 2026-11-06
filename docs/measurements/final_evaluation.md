@@ -142,8 +142,9 @@ old fusion scorer lacked.
 
 - **Corpus.** 300 GDELT-sourced 2024 India articles, screened to 139 protest
   articles.
-- **Extraction.** 1,124 reviewed event mentions, 244 condition mentions and 213
-  remarks, merged into 1,073 canonical events and 200 conditions.
+- **Extraction.** 911 reviewed event mentions plus 213 remarks (1,124 event
+  mentions in all), and 244 condition mentions. These are merged into 1,073
+  canonical events and 200 conditions.
 - **Graph `7cf84d52e097a387`.** 2,748 judged candidate claims give 244 accepted
   edges over 216 nodes in three levels. After 17 judged duplicate merges, the
   graph has 207 edges and 195 nodes.

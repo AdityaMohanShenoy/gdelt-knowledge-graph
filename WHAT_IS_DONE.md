@@ -107,9 +107,12 @@ protest against the recent rape and murder of a female doctor in Kolkata."*
 | time | Saturday |
 | type | protest |
 
-**Result:** 1,124 reviewed event mentions. Every field is checked to be the
-exact text at an exact character position in the saved article, so nothing is
-made up.
+**Result:** 911 reviewed event mentions. Of the rest, 286 proposals were
+rejected and 11 were left unreviewed. Step 6 later adds 213 remarks, making
+1,124 event mentions in all.
+
+Every field is checked to be the exact text at an exact character position in
+the saved article, so nothing is made up.
 
 **Report:** `event_mentions.md`
 
@@ -122,7 +125,10 @@ wording). AI judges each pair, and only pairs judged "same" are joined.
 **Example:** Arvind Kejriwal's arrest by the Enforcement Directorate became
 **one** event backed by **7 reports**.
 
-**Result:** 1,073 distinct ("canonical") events.
+**Result:** 1,073 distinct ("canonical") events from the 1,124 mentions. Most
+events are reported by only one article, so 1,045 stay as they are. The other
+79 mentions were judged to be the same event across articles and joined into 28
+events.
 
 **Report:** `canonical_events.md`
 
@@ -325,7 +331,7 @@ checks that don't rely on our own labels.
 | | |
 |---|---:|
 | Articles collected / kept as protest stories | 300 / 139 |
-| Event mentions / distinct events | 1,124 / 1,073 |
+| Event mentions (911 extracted + 213 remarks) / distinct events | 1,124 / 1,073 |
 | Grievances and conditions / remarks | 200 / 213 |
 | Candidate causes judged (three levels) | 2,748 |
 | Arrows in the final graph | **176, all human-verified** |
