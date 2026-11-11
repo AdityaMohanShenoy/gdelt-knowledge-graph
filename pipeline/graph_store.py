@@ -310,6 +310,10 @@ def compile_graph(snap: dict, config: dict) -> bytes:
     primary = {a["claim"]: a for a in snap["annotations"] if a["role"] == "primary"}
     # A person's review of the built edge outranks every AI judgement of it.
     human = {a["claim"]: a for a in snap["annotations"] if a["role"] == "human-review"}
+    # Without a person, a claim needs a second, blind AI accept: on the 300-article
+    # run a person rejected 31 of the 59 edges a blind re-check rejected, and none
+    # of the 148 it accepted (docs/measurements/final_evaluation.md).
+    blind = {a["claim"]: a for a in snap["annotations"] if a["role"] == "blind"}
     url = {s["external_id"]: s["url"] for s in snap["sources"]}
 
     claim_edges = []
@@ -318,6 +322,8 @@ def compile_graph(snap: dict, config: dict) -> bytes:
         h = human.get(c["external_id"])
         accepted = h["action"] == "accept" if h else c["verdict"] == "accepted"
         if not accepted or p is None:
+            continue
+        if not h and c["external_id"] in blind and blind[c["external_id"]]["action"] != "accept":
             continue
         if config.get("require_human") and not h:
             continue

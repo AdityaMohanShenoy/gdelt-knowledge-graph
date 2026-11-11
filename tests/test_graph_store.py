@@ -181,3 +181,19 @@ def test_a_human_verdict_outranks_the_ai_and_is_marked_on_the_edge():
     assert graph["edges"][0]["human_verified"] is True
     assert graph["counts"]["human_rejected_claims"] == 1
     assert strict["counts"]["edges"] == 1
+
+
+def test_a_blind_rejection_drops_an_ai_edge_unless_a_person_accepted_it():
+    blind = [edge("cl:1", "REJECTED", role="blind", reason="OTHER"),
+             edge("cl:2", "REJECTED", role="blind", reason="OTHER")]
+    review = [{"claim_id": "cl:1", "verdict": "accept", "reason": None, "relation": None,
+               "note": None, "reviewed_at": "2026-11-01T12:00:00Z",
+               "reviewer_id": "human:owner", "label_source": "human"}]
+
+    async def body(connection, schema):
+        await load(connection, {**DATA, "edges": DATA["edges"] + blind, "human_review": review})
+        return compile_graph(await snapshot(connection), {})
+
+    graph = json.loads(run(body))
+    # cl:2 had only the first AI accept; the blind judge rejected it, nobody overrode.
+    assert [e["claim_ids"] for e in graph["edges"]] == [["cl:1"]]
