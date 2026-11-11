@@ -94,3 +94,21 @@ def test_a_cluster_built_through_a_third_report_is_flagged_not_trusted():
     assert event["independent_outlets"] == ["rediff.com", "thehindu.com"]
     assert event["best_time"] == "2024-03-21" and event["event_type"] == "17"
     assert canonical_event(members[:1], [])["review_status"] == "SINGLE"
+
+
+def test_grown_clusters_keep_their_previous_ids():
+    from canonical_events import inherit_ids
+
+    old = [{"canonical_event_id": "ce:old1", "mentions": ["a", "b"]},
+           {"canonical_event_id": "ce:old2", "mentions": ["c"]}]
+    new = [{"canonical_event_id": "ce:new", "mentions": ["a", "b", "c", "d"]},
+           {"canonical_event_id": "ce:e", "mentions": ["e"]}]
+    fused, fresh = inherit_ids(new, old, "canonical_event_id")
+    assert fused["canonical_event_id"] == "ce:old1"
+    assert fused["previous_ids"] == ["ce:old1", "ce:old2"]
+    assert fresh == new[1]
+    split = [{"canonical_event_id": "x", "mentions": ["a"]},
+             {"canonical_event_id": "y", "mentions": ["b"]}]
+    import pytest
+    with pytest.raises(ValueError):
+        inherit_ids(split, old[:1], "canonical_event_id")

@@ -582,7 +582,7 @@ def evaluate(records: list[dict], annotations: list[dict], split: str | None = N
         audit_total += audit["total_spans"]
         counts[f"processing:{record['processing_status']}"] += 1
     for gold in annotations:
-        if gold.get("split") not in {"pilot", "train", "dev", "test"}:
+        if gold.get("split") not in {"pilot", "train", "dev", "test", "extension"}:
             raise ValueError("Unknown annotation evaluation split")
         if split is not None and gold.get("split") != split:
             continue

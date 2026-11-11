@@ -31,6 +31,7 @@ from canonical_events import (
     candidate_pairs,
     canonical_event,
     clusters,
+    inherit_ids,
     merged_pairs,
     pair_features,
     resolve_time,
@@ -144,6 +145,8 @@ def build(args: argparse.Namespace) -> dict:
             tuple(k.split("|")) for k in different if set(k.split("|")) <= members
         ]
         events.append(canonical_event([by_id[i] for i in group], sorted(conflicts)))
+    if args.previous:
+        events = inherit_ids(events, read_jsonl(args.previous), "canonical_event_id")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("x", encoding="utf-8") as handle:
         for event in events:
@@ -203,6 +206,8 @@ def main() -> None:
             sub.add_argument("--decisions", type=Path, required=True)
             sub.add_argument("--auto", type=float, default=None)
             sub.add_argument("--review-floor", type=float, default=0.25)
+            sub.add_argument("--previous", type=Path,
+                             help="earlier canonical events whose IDs grown clusters keep")
     args = parser.parse_args()
     result = pairs(args) if args.command == "pairs" else build(args)
     print(json.dumps(result, indent=2, default=str), file=sys.stdout)

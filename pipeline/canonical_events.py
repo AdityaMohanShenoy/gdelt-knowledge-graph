@@ -223,6 +223,28 @@ def clusters(ids: list[str], merges: list[dict]) -> list[list[str]]:
     return sorted((sorted(g) for g in groups.values()), key=lambda g: g[0])
 
 
+def inherit_ids(rows: list[dict], previous: list[dict], field: str) -> list[dict]:
+    """Keep a previous build's IDs when a cluster grows.
+
+    An ID is a hash of its members, so one new report would rename an event and
+    orphan every judgement and human verdict keyed on it. A new cluster that
+    contains earlier clusters takes the smallest of their IDs; `previous_ids`
+    records them all. Decisions are only ever added, so an earlier cluster never
+    splits; if one does, that is an error, not something to paper over."""
+    home = {m: i for i, r in enumerate(rows) for m in r["mentions"]}
+    taken: dict[int, list[str]] = {}
+    for old in previous:
+        where = {home.get(m) for m in old["mentions"]}
+        if len(where) != 1 or None in where:
+            raise ValueError(f"{old[field]} split or lost members in this build")
+        taken.setdefault(where.pop(), []).append(old[field])
+    out = []
+    for i, r in enumerate(rows):
+        olds = sorted(taken.get(i, []))
+        out.append({**r, field: olds[0], "previous_ids": olds} if olds else r)
+    return out
+
+
 def canonical_event(members: list[dict], conflicts: list[tuple]) -> dict:
     """One canonical event from the mentions judged to be the same development."""
     def precision(m: dict) -> tuple:

@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from canonical_events import clusters, merged_pairs
+from canonical_events import clusters, inherit_ids, merged_pairs
 from conditions import apply_extraction, canonical_condition, condition_pairs
 from focal_event_evaluation import read_jsonl
 from focal_event_screening import file_hash
@@ -153,6 +153,8 @@ def build(args: argparse.Namespace) -> dict:
         members = set(group)
         conflicts = sorted(tuple(k.split("|")) for k in different if set(k.split("|")) <= members)
         rows.append(canonical_condition([records[i] for i in group], conflicts, outlet))
+    if args.previous:
+        rows = inherit_ids(rows, read_jsonl(args.previous), "canonical_condition_id")
     return write(
         args.output,
         rows,
@@ -201,6 +203,8 @@ def main() -> None:
     for name in ("annotations", "conditions", "pairs", "decisions", "output"):
         b.add_argument(f"--{name}", type=Path, required=True)
     b.add_argument("--review-floor", type=float, default=PAIR_FLOOR)
+    b.add_argument("--previous", type=Path,
+                   help="earlier canonical conditions whose IDs grown clusters keep")
     args = parser.parse_args()
     result = {"apply": apply, "pairs": pairs, "build": build}[args.command](args)
     print(json.dumps(result, indent=2), file=sys.stdout)
