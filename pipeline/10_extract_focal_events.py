@@ -132,7 +132,7 @@ def screen(args: argparse.Namespace) -> dict:
     # An extension batch draws the next articles in the same seeded order, skipping
     # every article an earlier screening file already holds.
     taken = {json.loads(line)["article"]["url_key"]
-             for path in args.exclude for line in path.read_text().splitlines()}
+             for path in getattr(args, "exclude", []) for line in path.read_text().splitlines()}
     articles = asyncio.run(select_articles(
         args.database_url, args.limit, args.seed, [], sorted(set(observations) - taken)))
     if not articles:
@@ -160,7 +160,7 @@ def screen(args: argparse.Namespace) -> dict:
         "action_country": "IN",
         "gdelt_day_range": [20240101, 20241231],
         "candidate_url_count": len(observations),
-        "excluded_screening_files": {str(p): file_hash(p) for p in args.exclude},
+        "excluded_screening_files": {str(p): file_hash(p) for p in getattr(args, "exclude", [])},
         "article_ids": [r["article_id"] for r in records],
         "short_word_threshold": args.short_word_threshold,
         "quality_counts": dict(Counter(r["text_quality"]["status"] for r in records)),
