@@ -154,7 +154,8 @@ def build(args: argparse.Namespace) -> dict:
         conflicts = sorted(tuple(k.split("|")) for k in different if set(k.split("|")) <= members)
         rows.append(canonical_condition([records[i] for i in group], conflicts, outlet))
     if args.previous:
-        rows = inherit_ids(rows, read_jsonl(args.previous), "canonical_condition_id")
+        rows = inherit_ids(rows, [json.loads(x) for x in args.previous.read_text().splitlines()],
+                           "canonical_condition_id")
     return write(
         args.output,
         rows,

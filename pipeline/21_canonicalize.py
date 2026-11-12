@@ -146,7 +146,8 @@ def build(args: argparse.Namespace) -> dict:
         ]
         events.append(canonical_event([by_id[i] for i in group], sorted(conflicts)))
     if args.previous:
-        events = inherit_ids(events, read_jsonl(args.previous), "canonical_event_id")
+        previous = [json.loads(x) for x in args.previous.read_text().splitlines()]
+        events = inherit_ids(events, previous, "canonical_event_id")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("x", encoding="utf-8") as handle:
         for event in events:

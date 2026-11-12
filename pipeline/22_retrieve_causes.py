@@ -58,6 +58,10 @@ def main() -> None:
         "--edges", type=Path, nargs="*", default=[],
         help="judged edges so far; a target's own descendants are never its candidates",
     )
+    parser.add_argument(
+        "--cross-article-cap", type=int,
+        help="keep every same-article candidate but only the top N others per target",
+    )
     parser.add_argument("--model-manifest", type=Path, default=MODEL_MANIFEST)
     args = parser.parse_args()
     if bool(args.conditions) != bool(args.condition_mentions):
@@ -171,6 +175,17 @@ def main() -> None:
             if proposed(found, reach):
                 evidence = {"effect": seed["evidence"], "cause": cause["evidence"]}
                 claims.append(claim(seed, cause, found, evidence, retriever))
+    if args.cross_article_cap is not None:
+        # On the 300-article run 131 of 156 accepted causes were in the effect's own
+        # article; of the other 25, 20 ranked in their target's top 8 by retrieval
+        # score. A bigger corpus multiplies cross-article candidates, not those.
+        ranked: dict[str, list] = {}
+        for c in claims:
+            if not c["signals"]["same_article"]:
+                ranked.setdefault(c["effect_event_id"], []).append(c)
+        kept = {id(c) for group in ranked.values() for c in sorted(
+            group, key=lambda c: (-c["retrieval_score"], c["claim_id"]))[:args.cross_article_cap]}
+        claims = [c for c in claims if c["signals"]["same_article"] or id(c) in kept]
     ordered = queue(claims)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("x", encoding="utf-8") as handle:
@@ -206,6 +221,7 @@ def main() -> None:
         "output": str(args.output),
         "output_sha256": file_hash(args.output),
         "window_days": WINDOW_DAYS,
+        "cross_article_cap": args.cross_article_cap,
         "grievance_days": args.grievance_days,
         "claims_by_kind": dict(kinds),
         "seeds": len(seeds),
