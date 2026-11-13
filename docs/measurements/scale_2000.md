@@ -1,6 +1,6 @@
 # Scale-up to 2,000 articles
 
-**Status:** graph `d8b13720` has 1,239 edges over 1,055 nodes. 149 edges are
+**Status:** graph `bf3d9811` has 1,259 edges over 1,065 nodes. 149 edges are
 human-verified, carried over from v1.0; every other edge is AI-judged. No
 cycles; rebuilding gives identical bytes.
 
@@ -53,10 +53,10 @@ and every model is local.
 | Grievance and condition mentions / distinct conditions | 1,146 / 810 |
 | Same-event pairs judged / judged same | 8,913 / 1,970 |
 | Same-condition pairs judged / judged same | 2,661 / 1,440 |
-| Claims judged, three levels | 17,757 |
+| Claims judged, three levels | 17,868 |
 | Protest seeds | 373 |
-| Protests with at least one cause in the graph | 342 |
-| Edges / nodes in the graph | 1,239 / 1,055 |
+| Protests with at least one cause in the graph | 343 |
+| Edges / nodes in the graph | 1,259 / 1,065 |
 
 ## Causal judging
 
@@ -74,8 +74,37 @@ Rubric v2, 25% of seeds double-annotated, as in the 300-run.
   some candidate represented.
 - The two supplementary sets were small and targeted, so their recall is not
   comparable.
-- About one stated cause in five never reached a judge, because retrieval did
-  not propose it. The RG Kar killing was the most frequent such miss.
+
+**Recall is understated.**
+- **Why.** A packet shows only the candidates still to be judged. A cause already
+  linked to the same effect is invisible to the judge, who then reports it as
+  "missed".
+- **Measured.** A missed cause counts as covered when an accepted edge into the
+  same graph node matches it: the cause's description or quotes, by local
+  embedding, similarity ≥ 0.5. This is lenient, so read it as an estimate.
+
+| Level | Reported missed | Already covered | Recall, reported → estimated |
+|---|---:|---:|---|
+| 1 | 145 | 95 | 0.82 → ~0.93 |
+| 2 | 161 | 56 | 0.74 → ~0.82 |
+| 3 | 36 | 9 | 0.78 → ~0.82 |
+
+About one stated cause in eight to ten never reached a judge.
+
+**Second rescue.** This repeats the level-1 rescue for levels 2 and 3, and for
+the causes the blind judges reported missed.
+- 402 missed causes were matched by embedding (≥ 0.5) against the uncapped
+  retrieval pools, which are retrieval without the cap of 8.
+- 265 had an unjudged pool to search; 114 candidates were found.
+- The first judges accepted 27 (25% double-annotated, κ 1.0).
+- The blind re-check kept 25 and accepted none of the 87 rejected ones.
+- 111 were added one level below their target. 3 would have been level-4
+  edges and are left out.
+- Net effect on the graph: +20 edges, +1 protest with a cause.
+- Most missed causes still have nothing to match. Typically the stated cause,
+  often the RG Kar killing or a union's march call, was never extracted as an
+  event in that article. Fixing that is an extraction change, not a judging
+  one.
 
 ## Blind re-check (the gate that replaced the person)
 
@@ -196,7 +225,7 @@ This uses the method of `graph_build.md`, on the 1,132 nodes left after the gate
 - **Missed merges.** About 800 same-event merges are estimated missed in the
   unjudged 0.25–0.4 band. Some duplicate events therefore remain as separate
   nodes, beyond the about 100 duplicate nodes estimated above.
-- **Depth.** Expansion stops after three levels, as in the 300-run. 15 nodes
+- **Depth.** Expansion stops after three levels, as in the 300-run. 20 nodes
   remain `NOT_YET_REVIEWED`.
 
 ## Artifacts
@@ -209,10 +238,11 @@ earlier run's.
 | `focal_events/protest-2000.weak.v1.annotations.jsonl` | 2,000 articles, 915 kept |
 | `events/protest-2000.canonical.jsonl`, `…canonical-conditions.jsonl` | 6,152 events, 810 conditions |
 | `events/protest-2000.L{1,2,3}.{claims,edges,edges.second}.jsonl` | per level, aliases remapped |
-| `events/protest-2000.edges.blind.jsonl` | blind re-check |
+| `events/protest-2000.edges.blind.jsonl`, `…blind-r2.jsonl` | blind re-checks |
+| `events/protest-2000.claims.rescue2.jsonl`, `…edges.r2.jsonl` | second rescue |
 | `events/protest-2000.status.jsonl` | search status |
 | `graph/node-merges.2000.jsonl` | 197 earlier + 3,845 new + 1 superseding decision |
-| `scale/` | briefs, packets, judgements, `cycles.py`, `node_pairs.py`, `aliases.py` |
+| `scale/` | briefs, packets, judgements, `cycles.py`, `node_pairs.py`, `aliases.py`, `rescue_missed.py`, `add_rescue.py` |
 
 Store schema: `text_graph_2000`. Graph: `out/causal_graph.json`, version
-`d8b13720ea93047f1726e4a136041c45805bf28e1e46bdb1db3648cc7987c071`.
+`bf3d98116105de7c32d70a73886c2eca3e199c6a2060774064d8f3a1c850f53b`.

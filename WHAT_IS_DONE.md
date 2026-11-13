@@ -8,9 +8,9 @@ what each step does, why it exists, and a real example of its output. Release
 - The same steps ran on 1,700 more articles with no person reviewing new links.
   A second, blind AI check stands in for that review: an AI-accepted link stays
   only if a fresh AI judge, not told the first verdict, accepts it again.
-- The published graph now has **1,239 links**. **149** were checked by a person
+- The published graph now has **1,259 links**. **149** were checked by a person
   (all from v1.0); the rest are AI-checked twice.
-- It explains causes for **342 protests**, against 57 in v1.0.
+- It explains causes for **343 protests**, against 57 in v1.0.
 - Details and the honest gaps are in `docs/measurements/scale_2000.md`. The
   sections below describe v1.0 unless they say otherwise.
 
@@ -358,12 +358,12 @@ After the 2,000-article scale-up (`docs/measurements/scale_2000.md`):
 |---|---:|
 | Articles screened / kept as protest stories | 2,000 / 915 |
 | Distinct events / conditions | 6,152 / 810 |
-| Candidate causes judged (three levels) | 17,757 |
+| Candidate causes judged (three levels) | 17,868 |
 | AI-accepted links removed by the blind re-check | 143 of 1,352 |
-| Links in the graph / checked by a person | **1,239 / 149** |
-| Nodes in the graph | 1,055 |
-| Protests with at least one explained cause | 342 |
-| Graph version | `d8b13720` |
+| Links in the graph / checked by a person | **1,259 / 149** |
+| Nodes in the graph | 1,065 |
+| Protests with at least one explained cause | 343 |
+| Graph version | `bf3d9811` |
 | Tests | 344 passing |
 
 ---
@@ -379,7 +379,7 @@ After the 2,000-article scale-up (`docs/measurements/scale_2000.md`):
   reading", not "correct according to a person".
 - **Coverage.** With 139 articles, most protests had a single report, so many
   documented causes were missing. The 2,000-article scale-up (915 kept) is the
-  first step. About one stated cause in five still never reaches a judge.
+  first step. About one stated cause in eight to ten still never reaches a judge.
 - **No person reviewed the scale-up's new links.** Their quality rests on the
   blind AI re-check, calibrated on v1.0's human review.
 - **Question matching uses words, not meaning.** Asking with a synonym the
