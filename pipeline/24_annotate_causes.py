@@ -189,9 +189,17 @@ def apply(args: argparse.Namespace) -> dict:
         url = articles[article_id]["source_metadata"].get("url_key") or ""
         return (urlsplit(url).hostname or "").removeprefix("www.")
 
+    # The packet shows each seed's effect articles from its first claim; a later claim of
+    # the same effect can carry other effect evidence, so quotes are located in both.
+    seed_effect: dict[str, set] = {}
+    for c in claims.values():
+        seed_effect.setdefault(c["effect_event_id"],
+                               {e["article_id"] for e in c["evidence"]["effect"]})
+
     def texts(claim: dict) -> dict:
         ids = {e["article_id"] for side in claim["evidence"].values() for e in side}
-        return {a: articles[a]["article_text"] for a in ids}
+        ids |= seed_effect[claim["effect_event_id"]]
+        return {a: articles[a]["article_text"] for a in sorted(ids)}
 
     first, missed = judged(args.primary, key, claims)
     if set(first) != set(claims):

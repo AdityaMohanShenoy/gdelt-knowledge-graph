@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "pipeline"))
 
-from graph_store import compile_graph, load, snapshot, version  # noqa: E402
+from graph_store import compile_graph, load, representatives, snapshot, version  # noqa: E402
 
 from store import db  # noqa: E402
 
@@ -197,3 +197,15 @@ def test_a_blind_rejection_drops_an_ai_edge_unless_a_person_accepted_it():
     graph = json.loads(run(body))
     # cl:2 had only the first AI accept; the blind judge rejected it, nobody overrode.
     assert [e["claim_ids"] for e in graph["edges"]] == [["cl:1"]]
+
+
+def test_a_merge_chain_never_joins_what_a_person_kept_apart():
+    # call ~ campaign ~ march are judged "same" pairwise, but a person accepted call -> march.
+    nodes = {n: {"kind": "event"} for n in ("ce:call", "ce:campaign", "ce:march", "ce:other")}
+    blocked = []
+    alias = representatives([("ce:call", "ce:campaign"), ("ce:campaign", "ce:march"),
+                             ("ce:march", "ce:other")], nodes, [("ce:call", "ce:march")], blocked)
+    root = {n: alias.get(n, n) for n in nodes}
+    assert root["ce:call"] != root["ce:march"]
+    assert root["ce:march"] == root["ce:other"]
+    assert blocked == [["ce:campaign", "ce:march"]]

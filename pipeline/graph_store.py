@@ -370,7 +370,11 @@ def compile_graph(snap: dict, config: dict) -> bytes:
         latest[tuple(sorted((m["node_a"], m["node_b"])))] = m
     same = [(m["node_a"], m["node_b"]) for m in latest.values()
             if m["decision"] == "same" and m["node_a"] in by_id and m["node_b"] in by_id]
-    alias = representatives(same if config.get("merge_duplicates", True) else [], by_id)
+    # A person accepting a link between two nodes says they are different things.
+    apart = sorted({(e["source"], e["target"]) for e in claim_edges if e["human_verified"]})
+    blocked: list = []
+    alias = representatives(same if config.get("merge_duplicates", True) else [], by_id,
+                            apart, blocked)
     edges, loops = fold(claim_edges, alias, by_id)
     used = {e["source"] for e in edges} | {e["target"] for e in edges}
     members: dict[str, list[str]] = {}
@@ -394,6 +398,8 @@ def compile_graph(snap: dict, config: dict) -> bytes:
             "nodes": len(used),
             "nodes_merged_away": sum(len(v) for v in members.values()),
             "self_loops_dropped": loops,
+            # Listed only when non-empty, so graphs built before this rule keep their bytes.
+            **({"merges_blocked_by_human": blocked} if blocked else {}),
             # Merging can join two branches into a loop the unmerged graph never had.
             "cycle": find_cycle([{"review_status": "ACCEPTED", "source_event_id": e["source"],
                                   "target_event_id": e["target"]} for e in edges]),
@@ -407,10 +413,15 @@ STATUS_RANK = ("PARENTS_FOUND", "NO_SUPPORTED_PARENT_FOUND", "NOT_YET_REVIEWED",
                "UNVERIFIABLE", "OUT_OF_SCOPE", None)
 
 
-def representatives(pairs: list[tuple[str, str]], nodes: dict) -> dict[str, str]:
+def representatives(pairs: list[tuple[str, str]], nodes: dict,
+                    apart: list[tuple[str, str]] = (),
+                    blocked: list | None = None) -> dict[str, str]:
     """Duplicate node -> the node it merges into, over judged-same pairs. Each
-    cluster keeps one node: an event before a condition, then the smallest id."""
-    parent = {n: n for pair in pairs for n in pair}
+    cluster keeps one node: an event before a condition, then the smallest id.
+    A merge that would put both ends of an `apart` pair in one cluster is skipped
+    (and listed in `blocked`): merges chain, so two AI "same" calls can join what
+    a person judged to be cause and effect."""
+    parent = {n: n for pair in [*pairs, *apart] for n in pair}
 
     def find(n: str) -> str:
         while parent[n] != n:
@@ -419,7 +430,12 @@ def representatives(pairs: list[tuple[str, str]], nodes: dict) -> dict[str, str]
         return n
 
     for a, b in sorted(pairs):
-        parent[find(a)] = find(b)
+        ra, rb = find(a), find(b)
+        if ra != rb and any({find(x), find(y)} == {ra, rb} for x, y in apart):
+            if blocked is not None:
+                blocked.append([a, b])
+            continue
+        parent[ra] = rb
     clusters: dict[str, list[str]] = {}
     for n in parent:
         clusters.setdefault(find(n), []).append(n)
