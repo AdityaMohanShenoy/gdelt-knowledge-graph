@@ -4,6 +4,16 @@ This page explains, in plain words, everything this project has built so far:
 what each step does, why it exists, and a real example of its output. Release
 `v1.0` (1 November 2026) marks the point described here.
 
+**Since v1.0: the 2,000-article scale-up.**
+- The same steps ran on 1,700 more articles with no person reviewing new links.
+  A second, blind AI check stands in for that review: an AI-accepted link stays
+  only if a fresh AI judge, not told the first verdict, accepts it again.
+- The published graph now has **1,259 links**. **149** were checked by a person
+  (all from v1.0); the rest are AI-checked twice.
+- It explains causes for **343 protests**, against 57 in v1.0.
+- Details and the honest gaps are in `docs/measurements/scale_2000.md`. The
+  sections below describe v1.0 unless they say otherwise.
+
 The measurement reports in `docs/measurements/` have the full detail and the
 file hashes.
 
@@ -28,7 +38,7 @@ news articles ──► protests and their stated causes ──► checked cause
 
 ## Who did what
 
-All 176 arrows in the graph were **checked by a person** (the repo owner).
+In v1.0, all 176 arrows in the graph were **checked by a person** (the repo owner).
 Almost everything before that was done by **AI**, with checks around it. This
 matters when reading any number below.
 
@@ -284,7 +294,8 @@ shows:
 The answer covers 73% of the recorded causes, 5 of 8 direct causes.
 
 The answer never invents a link, and a test checks that every arrow it cites
-exists in the graph. Each link is marked "Checked by a person".
+exists in the graph. Each link shows whether a person checked it ("Checked by a
+person") or only AI did ("AI-annotated").
 
 **The other direction: "What did X lead to?"** A toggle on the tab switches to
 consequences, served by `/api/consequences`.
@@ -341,6 +352,20 @@ checks that don't rely on our own labels.
 | Graph version | `85204eba` |
 | Tests | 339 passing |
 
+After the 2,000-article scale-up (`docs/measurements/scale_2000.md`):
+
+| | |
+|---|---:|
+| Articles screened / kept as protest stories | 2,000 / 915 |
+| Distinct events / conditions | 6,152 / 810 |
+| Candidate causes judged (three levels) | 17,868 |
+| AI-accepted links removed by the blind re-check | 143 of 1,352 |
+| Links in the graph / checked by a person | **1,259 / 149** |
+| Nodes in the graph | 1,065 |
+| Protests with at least one explained cause | 343 |
+| Graph version | `bf3d9811` |
+| Tests | 344 passing |
+
 ---
 
 ## What is not done
@@ -352,8 +377,11 @@ checks that don't rely on our own labels.
 - **Human labels before the graph.** Screening, main events and extraction were
   labelled by AI. Numbers about those steps mean "agrees with an independent AI
   reading", not "correct according to a person".
-- **Coverage.** With 139 articles, most protests have a single report, so many
-  documented causes are missing. More articles is the main way to improve this.
+- **Coverage.** With 139 articles, most protests had a single report, so many
+  documented causes were missing. The 2,000-article scale-up (915 kept) is the
+  first step. About one stated cause in eight to ten still never reaches a judge.
+- **No person reviewed the scale-up's new links.** Their quality rests on the
+  blind AI re-check, calibrated on v1.0's human review.
 - **Question matching uses words, not meaning.** Asking with a synonym the
   articles never use ("agitation" for "protest") may not match.
 

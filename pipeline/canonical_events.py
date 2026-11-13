@@ -158,7 +158,8 @@ def pair_features(a: dict, b: dict, similarity: float) -> dict:
         "actors": jaccard(words(texts(a, "actors")), words(texts(b, "actors"))),
         "targets": jaccard(words(texts(a, "targets")), words(texts(b, "targets"))),
         "locations": jaccard(words(texts(a, "locations")), words(texts(b, "locations"))),
-        "action": jaccard(words([a["action"]["text"]]), words([b["action"]["text"]])),
+        "action": jaccard(words([(a["action"] or {}).get("text", "")]),
+                          words([(b["action"] or {}).get("text", "")])),
         "sentence_similarity": round(similarity, 4),
         "day_gap": gap,
         "both_dated": a["when"]["confidence"] != "low" and b["when"]["confidence"] != "low",
@@ -221,6 +222,28 @@ def clusters(ids: list[str], merges: list[dict]) -> list[list[str]]:
     for i in ids:
         groups.setdefault(find(i), []).append(i)
     return sorted((sorted(g) for g in groups.values()), key=lambda g: g[0])
+
+
+def inherit_ids(rows: list[dict], previous: list[dict], field: str) -> list[dict]:
+    """Keep a previous build's IDs when a cluster grows.
+
+    An ID is a hash of its members, so one new report would rename an event and
+    orphan every judgement and human verdict keyed on it. A new cluster that
+    contains earlier clusters takes the smallest of their IDs; `previous_ids`
+    records them all. Decisions are only ever added, so an earlier cluster never
+    splits; if one does, that is an error, not something to paper over."""
+    home = {m: i for i, r in enumerate(rows) for m in r["mentions"]}
+    taken: dict[int, list[str]] = {}
+    for old in previous:
+        where = {home.get(m) for m in old["mentions"]}
+        if len(where) != 1 or None in where:
+            raise ValueError(f"{old[field]} split or lost members in this build")
+        taken.setdefault(where.pop(), []).append(old[field])
+    out = []
+    for i, r in enumerate(rows):
+        olds = sorted(taken.get(i, []))
+        out.append({**r, field: olds[0], "previous_ids": olds} if olds else r)
+    return out
 
 
 def canonical_event(members: list[dict], conflicts: list[tuple]) -> dict:

@@ -43,7 +43,12 @@ LEVELS = [
 
 
 async def main_async(args: argparse.Namespace) -> dict:
-    data = gather(levels=LEVELS, **{k: getattr(args, k) for k in DEFAULTS})
+    levels = [tuple(level) for level in args.level] if args.level else LEVELS
+    data = gather(levels=levels, **{k: getattr(args, k) for k in DEFAULTS})
+    # Blind re-check judgements load as annotations with role "blind"; the build
+    # drops an AI-accepted claim a blind judge rejected unless a person accepted it.
+    data["edges"] += [{**e, "annotation_role": "blind"} for path in args.blind
+                      for e in map(json.loads, path.read_text().splitlines())]
     connection = await asyncpg.connect(args.database_url, statement_cache_size=0)
     try:
         await init(connection, args.schema)
@@ -60,6 +65,11 @@ def main() -> None:
     parser.add_argument("--database-url", default=DEFAULT_DATABASE_URL)
     for name, default in DEFAULTS.items():
         parser.add_argument(f"--{name.replace('_', '-')}", dest=name, type=Path, default=default)
+    parser.add_argument("--level", nargs=3, type=Path, action="append",
+                        metavar=("CLAIMS", "PRIMARY", "SECOND"),
+                        help="one per expansion level, in order (default: the 300-article run)")
+    parser.add_argument("--blind", type=Path, action="append", default=[],
+                        help="edges files from a blind re-check pass")
     args = parser.parse_args()
     print(json.dumps(asyncio.run(main_async(args)), indent=2))
 

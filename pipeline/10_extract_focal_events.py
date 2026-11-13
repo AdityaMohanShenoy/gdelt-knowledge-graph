@@ -129,9 +129,12 @@ def screen(args: argparse.Namespace) -> dict:
     if args.output.exists() or manifest_path.exists():
         raise FileExistsError("Screening output or manifest already exists")
     observations = candidate_observations(args.events_input, args.root_code)
-    articles = asyncio.run(
-        select_articles(args.database_url, args.limit, args.seed, [], sorted(observations))
-    )
+    # An extension batch draws the next articles in the same seeded order, skipping
+    # every article an earlier screening file already holds.
+    taken = {json.loads(line)["article"]["url_key"]
+             for path in getattr(args, "exclude", []) for line in path.read_text().splitlines()}
+    articles = asyncio.run(select_articles(
+        args.database_url, args.limit, args.seed, [], sorted(set(observations) - taken)))
     if not articles:
         raise ValueError("No extracted articles match the candidate GDELT URLs")
     records = []
@@ -157,6 +160,7 @@ def screen(args: argparse.Namespace) -> dict:
         "action_country": "IN",
         "gdelt_day_range": [20240101, 20241231],
         "candidate_url_count": len(observations),
+        "excluded_screening_files": {str(p): file_hash(p) for p in getattr(args, "exclude", [])},
         "article_ids": [r["article_id"] for r in records],
         "short_word_threshold": args.short_word_threshold,
         "quality_counts": dict(Counter(r["text_quality"]["status"] for r in records)),
@@ -326,7 +330,8 @@ def split(args: argparse.Namespace) -> dict:
 # working fields (e.g. `ai_proposal`) stay in the input file, whose hash the
 # manifest records.
 FROZEN_KEYS = (*SNAPSHOT_KEYS, *blank_labels(), "core_sentence_id", "model_evidence_inspections")
-SPLITS = ("pilot", "train", "dev", "test")
+# `extension`: articles added after the splits were fixed; never tuned or tested on.
+SPLITS = ("pilot", "train", "dev", "test", "extension")
 
 
 def is_ai_label(reviewer: str | None, label_source: str | None = None) -> bool:
@@ -477,6 +482,8 @@ def parse_args() -> argparse.Namespace:
     screening.add_argument("--limit", type=positive_integer, default=50)
     screening.add_argument("--seed", default="protest-screening-v1")
     screening.add_argument("--short-word-threshold", type=positive_integer, default=100)
+    screening.add_argument("--exclude", type=Path, action="append", default=[],
+                           help="screening files whose articles this batch must skip")
     screening.add_argument("--output", type=Path, required=True)
     extraction = commands.add_parser("extract")
     extraction.add_argument("--database-url", default=DEFAULT_DATABASE_URL)
@@ -493,7 +500,7 @@ def parse_args() -> argparse.Namespace:
     evaluation = commands.add_parser("evaluate")
     evaluation.add_argument("--input", type=Path, required=True)
     evaluation.add_argument("--annotations", type=Path, required=True)
-    evaluation.add_argument("--split", choices=["pilot", "train", "dev", "test"])
+    evaluation.add_argument("--split", choices=SPLITS)
     evaluation.add_argument("--output", type=Path)
     audit = commands.add_parser("audit")
     audit.add_argument("--input", type=Path, required=True)

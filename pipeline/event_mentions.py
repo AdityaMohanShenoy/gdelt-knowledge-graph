@@ -346,7 +346,15 @@ def apply_review(gold: dict, mentions: list[dict], review: dict, reviewer: str) 
     text = gold["article_text"]
     sentences = {s["sentence_id"]: s for s in gold["sentences"]}
     verdicts = {r["mention_id"]: r for r in review["mentions"]}
-    proposals = [m for m in mentions if m["origin"] == "rules"]
+    # A review may also judge the focal seed (the core sentence's placeholder). An
+    # accepted seed becomes a reviewed event; a rejected one falls back to the
+    # placeholder below, as an unjudged seed always has.
+    seed = next((m for m in mentions if m["origin"] == "focal_seed"), None)
+    judged = seed if seed and seed["event_mention_id"] in verdicts else None
+    if judged and verdicts[judged["event_mention_id"]]["verdict"] != "accept":
+        del verdicts[judged["event_mention_id"]]
+        judged = None
+    proposals = [m for m in mentions if m["origin"] == "rules"] + ([judged] if judged else [])
     if set(verdicts) != {m["event_mention_id"] for m in proposals}:
         raise ValueError(f"{gold['article_id']}: review does not cover exactly the proposals")
     dropped = 0
@@ -405,7 +413,6 @@ def apply_review(gold: dict, mentions: list[dict], review: dict, reviewer: str) 
             }
         )
     # The focal flag belongs to a confirmed event in the core sentence when one exists.
-    seed = next((m for m in mentions if m["origin"] == "focal_seed"), None)
     focal_sentence = next((m["sentence_id"] for m in mentions if m["focal"]), None)
     for row in reviewed:
         row["focal"] = False
