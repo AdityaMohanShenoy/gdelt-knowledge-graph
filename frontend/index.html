@@ -639,6 +639,10 @@ body::after {
 .why-pips { font-family: var(--mono); color: var(--rel, var(--amber)); letter-spacing: 1px; }
 .why-check { font-size: 10.5px; color: var(--text-dim); border: 1px solid var(--surf3); border-radius: 3px; padding: 0 5px; }
 .why-check.yes { color: var(--emerald); border-color: var(--emerald); }
+.why-implied { display: flex; gap: 7px; align-items: flex-start; font-size: 11.5px; color: var(--text-mid); line-height: 1.35; cursor: pointer; }
+.why-implied input { accent-color: var(--amber); margin: 2px 0 0; }
+.why-implied input:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.why-implied small { display: block; color: var(--text-dim); font-size: 10.5px; }
 .why-quote {
   font-size: 12.5px; color: var(--text); line-height: 1.5; max-width: 72ch;
   padding: 6px 10px; background: var(--bg); border-radius: 3px;
@@ -937,6 +941,8 @@ body::after {
             <textarea class="why-input" id="why-q" maxlength="300"
               placeholder="Why did doctors in Salem boycott work?"></textarea>
             <button class="why-go" type="submit">Explain</button>
+            <label class="why-implied" for="why-implied"><input type="checkbox" id="why-implied">
+              <span>Include unchecked implied links<small>A person's spot check found about 1 in 3 of these wrong</small></span></label>
           </form>
           <div class="why-topics-head"><span id="why-topics-title">Protests the graph explains</span>
             <small id="why-graph-size"></small></div>
@@ -2044,6 +2050,8 @@ const WHY_VERB = {
 let _whyLoaded = false;
 let _whyActive = null;
 let _whyDir = 'causes';
+let _whyImplied = false;
+const whyView = () => (_whyImplied ? '&implied=true' : '');
 const WHY_DIR = {
   causes: { endpoint: '/api/explain', label: 'Ask why something happened',
             placeholder: 'Why did doctors in Salem boycott work?',
@@ -2066,6 +2074,10 @@ async function loadCausal() {
     $('why-topics-title').textContent = WHY_DIR[_whyDir].topics;
     loadWhyTopics();
   }));
+  $('why-implied').addEventListener('change', e => {
+    _whyImplied = e.target.checked;
+    loadWhyTopics();
+  });
   $('why-form').addEventListener('submit', e => {
     e.preventDefault();
     const q = $('why-q').value.trim();
@@ -2078,7 +2090,7 @@ async function loadCausal() {
 }
 
 async function loadWhyTopics() {
-  const d = await api(`/api/explain/topics?direction=${_whyDir}`);
+  const d = await api(`/api/explain/topics?direction=${_whyDir}${whyView()}`);
   const list = $('why-topics');
   if (!d || d.error) {
     list.innerHTML = '';
@@ -2086,9 +2098,10 @@ async function loadWhyTopics() {
       deployment. Build it with <code>pipeline/40_build_graph.py --publish out/causal_graph.json</code>.</p>`;
     return;
   }
-  $('why-graph-size').textContent = _whyDir === 'causes'
+  const hidden = d.hidden_implied ? `, ${d.hidden_implied} implied links hidden` : '';
+  $('why-graph-size').textContent = (_whyDir === 'causes'
     ? `${d.topics.length} protests, ${d.edges} cause links`
-    : `${d.topics.length} causes, ${d.edges} cause links`;
+    : `${d.topics.length} causes, ${d.edges} cause links`) + hidden;
   list.innerHTML = d.topics.map(t => `
     <button class="why-topic" data-node="${esc(t.id)}">${esc(t.label)}
       <time>${[t.date, t.downstream_links ? `${t.downstream_links} links downstream` : '']
@@ -2105,7 +2118,7 @@ async function askWhy(params) {
   document.querySelectorAll('.why-topic').forEach(b =>
     b.classList.toggle('active', b.dataset.node === _whyActive));
   const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== ''));
-  const d = await api(`${WHY_DIR[_whyDir].endpoint}?${qs}`);
+  const d = await api(`${WHY_DIR[_whyDir].endpoint}?${qs}${whyView()}`);
   if (!d) { main.innerHTML = '<p class="why-empty">The explanation didn’t load. Check your connection and ask again.</p>'; return; }
   if (d.status === 'clarify') return renderClarify(d, params.q);
   if (d.status !== 'ok') {

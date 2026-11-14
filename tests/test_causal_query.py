@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from causal_query import Graph, explain, ground, label  # noqa: E402
+from causal_query import Graph, explain, ground, label, without_unchecked_implied  # noqa: E402
 
 
 def node(nid, description, kind="event", date="2024-08-17", status="PARENTS_FOUND", actors=()):
@@ -97,3 +97,15 @@ def test_effects_read_the_same_graph_downstream():
     assert r["coverage"]["not_searched"] == []  # search status is about causes only
     assert explain(GRAPH, "", node="ce:boycott", direction="effects")["paths"] == []
 
+
+
+def test_default_view_hides_only_unchecked_implied_links():
+    data = {"nodes": [node("ce:a", "a"), node("ce:b", "b"), node("ce:c", "c"), node("ce:d", "d")],
+            "edges": [edge("ce:a", "ce:b", "TRIGGERS", 1.0, "q"),
+                      edge("ce:c", "ce:b", "MOTIVATES", 1 / 3, "q", quality="implicit"),
+                      {**edge("ce:d", "ce:b", "MOTIVATES", 1 / 3, "q", quality="implicit"),
+                       "human_verified": True}]}
+    view = without_unchecked_implied(data)
+    assert [e["source"] for e in view["edges"]] == ["ce:a", "ce:d"]
+    assert view["hidden_implied"] == 1
+    assert len(data["edges"]) == 3  # the published graph itself is untouched

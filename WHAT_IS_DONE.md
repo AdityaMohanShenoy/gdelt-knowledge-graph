@@ -12,6 +12,8 @@ what each step does, why it exists, and a real example of its output. Release
   (144 from v1.0, 89 from a random spot check); the rest are AI-checked twice.
 - The spot check found **90%** of the AI-only links right: every explicit one,
   and two thirds of those resting on implied evidence.
+- So the explain view hides the 285 unchecked implied links by default; a box on
+  the page shows them.
 - It explains causes for **358 protests**, against 57 in v1.0.
 - Causes an article states but the extractor missed (a statue collapse, an
   arrest, a remark) were added as new events or conditions from the article's
