@@ -8,7 +8,7 @@ what each step does, why it exists, and a real example of its output. Release
 - The same steps ran on 1,700 more articles with no person reviewing new links.
   A second, blind AI check stands in for that review: an AI-accepted link stays
   only if a fresh AI judge, not told the first verdict, accepts it again.
-- The published graph now has **1,424 links**. **144** carry a person's check
+- The published graph now has **1,426 links**. **144** carry a person's check
   (all from v1.0); the rest are AI-checked twice.
 - It explains causes for **358 protests**, against 57 in v1.0.
 - Causes an article states but the extractor missed (a statue collapse, an
@@ -361,12 +361,12 @@ After the 2,000-article scale-up (`docs/measurements/scale_2000.md`):
 |---|---:|
 | Articles screened / kept as protest stories | 2,000 / 915 |
 | Distinct events / conditions | 6,152 / 810 |
-| Candidate causes judged (three levels) | 20,016 |
+| Candidate causes judged (three levels) | 20,129 |
 | AI-accepted links removed by the blind re-check | 143 of 1,352 |
-| Links in the graph / checked by a person | **1,424 / 144** |
+| Links in the graph / checked by a person | **1,426 / 144** |
 | Nodes in the graph | 1,191 |
 | Protests with at least one explained cause | 358 |
-| Graph version | `47991052` |
+| Graph version | `1e309d17` |
 | Tests | 344 passing |
 
 ---

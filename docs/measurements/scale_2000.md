@@ -1,6 +1,6 @@
 # Scale-up to 2,000 articles
 
-**Status:** graph `47991052` has 1,424 edges over 1,191 nodes. 144 edges carry
+**Status:** graph `1e309d17` has 1,426 edges over 1,191 nodes. 144 edges carry
 a person's accept, carried over from v1.0 (all 206 person-accepted claims are on
 an edge; merges joined some of v1.0's 149 edges). Every other edge is AI-judged.
 No cycles; rebuilding gives identical bytes.
@@ -54,10 +54,10 @@ and every model is local.
 | Grievance and condition mentions / distinct conditions | 1,146 / 810 |
 | Same-event pairs judged / judged same | 8,913 / 1,970 |
 | Same-condition pairs judged / judged same | 2,661 / 1,440 |
-| Claims judged, three levels | 20,016 |
+| Claims judged, three levels | 20,129 |
 | Protest seeds | 373 |
 | Protests with at least one cause in the graph | 358 |
-| Edges / nodes in the graph | 1,424 / 1,191 |
+| Edges / nodes in the graph | 1,426 / 1,191 |
 
 ## Causal judging
 
@@ -157,6 +157,11 @@ rounds' own judges reported more (277), mostly deeper causes of the new nodes.
   (κ 1.0 on 6 double-annotated). Blind re-check kept 19 and accepted 2 of 19
   decoys.
 - New node pairs (124 at ≥ 0.6, not yet decided): 2 same.
+
+**Round 5: the last unsearched nodes.** Round 4's links reached 12 more depth-2
+nodes. 113 claims; 3 accepted, all 3 kept by the blind re-check (0 of 3 decoys
+accepted); no missed causes reported. Every node above the three-level stop
+has now been searched, so the expansion has converged.
 
 ## Blind re-check (the gate that replaced the person)
 
@@ -311,9 +316,9 @@ pair already decided.
 - **Missed merges.** About 800 same-event merges are estimated missed in the
   unjudged 0.25–0.4 band of event pairs. Graph nodes below 0.6 similarity were
   never paired.
-- **Depth.** Expansion stops after three levels, as in the 300-run. 39 nodes
-  are `NOT_YET_REVIEWED`, all reached at depth 3 or by a link added after the
-  last search.
+- **Depth.** Expansion stops after three levels, as in the 300-run. The 28
+  `NOT_YET_REVIEWED` graph nodes are all at depth 3, or no longer reachable
+  from a protest after the blind gate.
 
 ## Artifacts
 
@@ -331,10 +336,11 @@ earlier run's.
 | `events/protest-2000.stated.residual.jsonl`, `…claims.stated.jsonl`, `…edges.stated.jsonl`, `…edges.blind-stated.jsonl` | stated causes |
 | `events/protest-2000.*.final.jsonl` | mentions, conditions and nodes including the stated causes |
 | `events/protest-2000.claims.R4.new.jsonl`, `…edges.r4.jsonl`, `…edges.blind-r4.jsonl` | round 4 |
+| `events/protest-2000.claims.R5.new.jsonl`, `…edges.r5.jsonl`, `…edges.blind-r5.jsonl` | round 5 |
 | `events/protest-2000.stated2.residual.jsonl`, `…claims.stated2.jsonl`, `…edges.stated2.jsonl`, `…edges.blind-stated2.jsonl` | round-4 stated causes |
 | `events/protest-2000.status.jsonl` | search status |
 | `graph/node-merges.2000.jsonl` | 197 earlier + 3,845 pass-1 + 12,635 pass-2 + 124 pass-3 decisions, 5 superseding |
 | `scale/` | briefs, packets, judgements, `cycles.py`, `node_pairs.py`, `aliases.py`, `rescue_missed.py`, `rescue_global.py`, `stated_causes.py`, `add_rescue.py` |
 
 Store schema: `text_graph_2000`. Graph: `out/causal_graph.json`, version
-`47991052ea69d82ee5b40d40da54c7452f2efd138d6ef2fc39513c31aa3b9318`.
+`1e309d17b18c03d1d5b4d830b4ce895ae0407d9c8362c23f069cee082d1c8cad`.

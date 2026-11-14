@@ -2,7 +2,7 @@
 
 Decoding the Domino Effect is a research project on evidence-backed causal reasoning over temporal knowledge graphs built from GDELT data.
 
-**New here? Start with [WHAT_IS_DONE.md](WHAT_IS_DONE.md)**, a plain-language tour of everything built so far, with real examples. It covers release v1.0, a causal graph whose 176 links were all human-verified, and the 2,000-article scale-up after it: 1,424 links, 144 human-verified and the rest checked twice by AI ([docs/measurements/scale_2000.md](docs/measurements/scale_2000.md)).
+**New here? Start with [WHAT_IS_DONE.md](WHAT_IS_DONE.md)**, a plain-language tour of everything built so far, with real examples. It covers release v1.0, a causal graph whose 176 links were all human-verified, and the 2,000-article scale-up after it: 1,426 links, 144 human-verified and the rest checked twice by AI ([docs/measurements/scale_2000.md](docs/measurements/scale_2000.md)).
 
 The previous Python exploration pipeline and dashboard are preserved in [archive/legacy-exploration/](archive/legacy-exploration/). The active project is now being rebuilt around a smaller, reproducible dataset of civil unrest and protests in India, followed by a pilot annotation set.
 
