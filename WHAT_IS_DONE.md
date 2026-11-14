@@ -8,12 +8,14 @@ what each step does, why it exists, and a real example of its output. Release
 - The same steps ran on 1,700 more articles with no person reviewing new links.
   A second, blind AI check stands in for that review: an AI-accepted link stays
   only if a fresh AI judge, not told the first verdict, accepts it again.
-- The published graph now has **1,416 links**. **233** carry a person's check
-  (144 from v1.0, 89 from a random spot check); the rest are AI-checked twice.
+- The published graph now has **1,416 links**. **233** carry a person's
+  review (144 from v1.0, 89 from a random spot check); 284 more carry only a
+  fast pass (all accepted in under three minutes); the rest are AI-checked twice.
 - The spot check found **90%** of the AI-only links right: every explicit one,
   and two thirds of those resting on implied evidence.
-- So the explain view hides the 285 unchecked implied links by default; a box on
-  the page shows them.
+- The explain view hides unchecked implied links by default (a box shows them).
+  After the fast pass only one is left hidden; the fast-pass links are marked in
+  the record, and the doc says how to leave them out.
 - It explains causes for **358 protests**, against 57 in v1.0.
 - Causes an article states but the extractor missed (a statue collapse, an
   arrest, a remark) were added as new events or conditions from the article's
@@ -367,10 +369,10 @@ After the 2,000-article scale-up (`docs/measurements/scale_2000.md`):
 | Distinct events / conditions | 6,152 / 810 |
 | Candidate causes judged (three levels) | 20,129 |
 | AI-accepted links removed by the blind re-check | 143 of 1,352 |
-| Links in the graph / checked by a person | **1,416 / 233** |
+| Links in the graph / checked by a person | **1,416 / 233** (+284 fast pass) |
 | Nodes in the graph | 1,188 |
 | Protests with at least one explained cause | 358 |
-| Graph version | `e4c4a65e` |
+| Graph version | `a0fee89b` |
 | Tests | 344 passing |
 
 ---

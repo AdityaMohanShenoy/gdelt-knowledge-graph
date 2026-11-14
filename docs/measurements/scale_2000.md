@@ -1,9 +1,10 @@
 # Scale-up to 2,000 articles
 
-**Status:** graph `e4c4a65e` has 1,416 edges over 1,188 nodes. 233 edges carry
-a person's accept: 144 from v1.0 (merges joined some of its 149) and 89 from a
-spot check of this run. All 305 person-accepted claims are on an edge. Every
-other edge is AI-judged; the spot check below measures how often those are right.
+**Status:** graph `a0fee89b` has 1,416 edges over 1,188 nodes. 517 edges carry
+a person's accept: 144 from v1.0 (merges joined some of its 149), 89 from a
+spot check of this run, and 284 from a fast pass over the implicit edges (see
+below: read it as unreviewed). All 604 person-accepted claims are on an edge.
+Every other edge is AI-judged; the spot check measures how often those are right.
 No cycles; rebuilding gives identical bytes.
 
 The run applies the methods of the 300-article run to 1,700 more articles with
@@ -232,8 +233,16 @@ then reviewed 100 of the 1,282 AI-only edges of graph `1e309d17`, drawn at rando
   edges by default (285 of 1,416; 344 of 358 protests keep a cause) and include
   them with `implied=true`, which the page's "Include unchecked implied links"
   box sets. Person-checked edges always show.
-- **The person's review of all 285** is open at the "Implied Link Review" page;
-  its verdicts will be folded in like the spot check's.
+- **The person's pass over all 285.** On the "Implied Link Review" page the owner
+  accepted all 285, in under three minutes (08:44:15–08:46:56 UTC, about half a
+  second each). That does not match the spot check, where a third of implicit
+  edges were rejected, so it is not a review. At the owner's choice the verdicts
+  are applied anyway, as tier `implied-review-2000-fast` in
+  `graph/human-edge-review.v5.jsonl`, with that note on every row.
+- **Effect.** Those edges now count as `human_verified` and show in the default
+  explain view (1,415 of 1,416). By the spot check's rate, roughly 95 of them are
+  wrong. **For a measured-safe subset, keep the explicit edges plus the edges
+  verified in v1.0 and the spot check, and drop tier `implied-review-2000-fast`.**
 
 ## Cycles
 
@@ -357,8 +366,9 @@ pair already decided.
 
 ## Not done
 
-- **Most new edges are unchecked by a person.** A random 100 were; 1,182
-  AI-only edges remain, measured at about 90% right, 67% for implicit ones.
+- **Most new edges are unchecked by a person.** A random 100 were reviewed. The
+  285 implicit ones got only a fast pass (all accepted in under three minutes).
+  About 900 explicit AI-only edges remain unchecked, measured at 69/69 right.
 - **Missed merges.** About 800 same-event merges are estimated missed in the
   unjudged 0.25–0.4 band of event pairs. Graph nodes below 0.6 similarity were
   never paired.
@@ -386,8 +396,9 @@ earlier run's.
 | `events/protest-2000.stated2.residual.jsonl`, `…claims.stated2.jsonl`, `…edges.stated2.jsonl`, `…edges.blind-stated2.jsonl` | round-4 stated causes |
 | `events/protest-2000.status.jsonl` | search status |
 | `graph/human-edge-review.v4.jsonl` | v1.0's 238 verdicts + 110 from the spot check, sha256 `1dc483fb84278f15cf70ff518f971f179255560d61181ce3e8c124401d42dee9` |
+| `graph/human-edge-review.v5.jsonl` | v4 + 299 fast-pass accepts (tier `implied-review-2000-fast`), sha256 `0b9fcc22709aaf5bb0e703a7eac26c17d35e104424fa0841105efadb6913b160` |
 | `graph/node-merges.2000.jsonl` | 197 earlier + 3,845 pass-1 + 12,635 pass-2 + 124 pass-3 decisions, 5 superseding |
 | `scale/` | briefs, packets, judgements, `cycles.py`, `node_pairs.py`, `aliases.py`, `rescue_missed.py`, `rescue_global.py`, `stated_causes.py`, `add_rescue.py` |
 
 Store schema: `text_graph_2000`. Graph: `out/causal_graph.json`, version
-`e4c4a65e2488c749d13ae1bfb8714ebe020ba8c549851e7556809c63ad0ff542`.
+`a0fee89b35f31ebadeece4d6ada5c644cae7f9eafca3b84fbeec0d1d59593f2e`.
