@@ -13,7 +13,7 @@ graph — numbered tasks with acceptance criteria, meant to be executed one at a
 those are gitignored and are **not present in a cloud sandbox**. Don't try to
 re-run the pipeline there; it needs ~1GB of raw data that only exists locally.
 
-The second is `out/causal_graph.json` (~2.4MB, committed): the compiled causal
+The second is `out/causal_graph.json` (~2.7MB, committed): the compiled causal
 graph, read lazily and only by `/api/explain*` (`causal_query.py`). It is
 published by `pipeline/40_build_graph.py --publish out/causal_graph.json`; its
 SHA-256 is the graph version. Never hand-edit it — rebuild from the store. The
