@@ -1,8 +1,9 @@
 # Scale-up to 2,000 articles
 
-**Status:** graph `47991052` has 1,424 edges over 1,191 nodes. 144 edges carry
-a person's accept, carried over from v1.0 (all 206 person-accepted claims are on
-an edge; merges joined some of v1.0's 149 edges). Every other edge is AI-judged.
+**Status:** graph `e4c4a65e` has 1,416 edges over 1,188 nodes. 233 edges carry
+a person's accept: 144 from v1.0 (merges joined some of its 149) and 89 from a
+spot check of this run. All 305 person-accepted claims are on an edge. Every
+other edge is AI-judged; the spot check below measures how often those are right.
 No cycles; rebuilding gives identical bytes.
 
 The run applies the methods of the 300-article run to 1,700 more articles with
@@ -54,10 +55,10 @@ and every model is local.
 | Grievance and condition mentions / distinct conditions | 1,146 / 810 |
 | Same-event pairs judged / judged same | 8,913 / 1,970 |
 | Same-condition pairs judged / judged same | 2,661 / 1,440 |
-| Claims judged, three levels | 20,016 |
+| Claims judged, three levels | 20,129 |
 | Protest seeds | 373 |
 | Protests with at least one cause in the graph | 358 |
-| Edges / nodes in the graph | 1,424 / 1,191 |
+| Edges / nodes in the graph | 1,416 / 1,188 |
 
 ## Causal judging
 
@@ -158,6 +159,11 @@ rounds' own judges reported more (277), mostly deeper causes of the new nodes.
   decoys.
 - New node pairs (124 at ≥ 0.6, not yet decided): 2 same.
 
+**Round 5: the last unsearched nodes.** Round 4's links reached 12 more depth-2
+nodes. 113 claims; 3 accepted, all 3 kept by the blind re-check (0 of 3 decoys
+accepted); no missed causes reported. Every node above the three-level stop
+has now been searched, so the expansion has converged.
+
 ## Blind re-check (the gate that replaced the person)
 
 **Calibration.** On the 300-run, a person reviewed every edge:
@@ -183,6 +189,31 @@ also held 1,352 earlier rejects from the same effects, at a 1:1 ratio.
   decoy rate argues for the first, but no person has checked it.
 - **Dropped edges.** The 143 blind-rejected edges are out of the graph.
   On the 300-run's evidence, about half of those were right.
+
+## A person's spot check
+
+The precision of AI-only edges had rested on the 300-run's calibration. The owner
+then reviewed 100 of the 1,282 AI-only edges of graph `1e309d17`, drawn at random
+(seed 20261114), on v1.0's review page.
+
+| | Accepted / decided |
+|---|---:|
+| All | **89 / 99** (one unsure): 90%, 95% interval 82–94% |
+| Explicit evidence | 69 / 69 |
+| Implicit evidence | 20 / 30 |
+| Depth 1 / 2 / 3 | 48 / 49, 33 / 42, 8 / 8 |
+| From retrieval / rescues / stated causes | 79 / 89, 4 / 4, 6 / 6 |
+
+- **Every rejection was an implicit link**, six of ten `ESCALATES` ("an earlier
+  stage of the same dispute"). Explicit links: none wrong in 69, so their error
+  rate is under about 4% (95%).
+- **For the edges nobody checked:** about 285 implicit AI-only edges remain. At
+  the sampled rate, roughly 95 of them are wrong. That is where to look next.
+- **Applied.** The verdicts are stored in `graph/human-edge-review.v4.jsonl`
+  (v3 plus 110 claim verdicts, tier `spot-check-2000`) and outrank the AI in the
+  build: the 10 rejected edges are gone, the 89 accepted are human-verified.
+- **Review time.** All 100 were decided in about eight minutes, so these are
+  quick reads of the quoted evidence, not a re-reading of each article.
 
 ## Cycles
 
@@ -306,14 +337,14 @@ pair already decided.
 
 ## Not done
 
-- **No person reviewed any new edge.** The precision of blind-accepted edges
-  rests on the 300-run calibration, not on a check of this run.
+- **Most new edges are unchecked by a person.** A random 100 were; 1,182
+  AI-only edges remain, measured at about 90% right, 67% for implicit ones.
 - **Missed merges.** About 800 same-event merges are estimated missed in the
   unjudged 0.25–0.4 band of event pairs. Graph nodes below 0.6 similarity were
   never paired.
-- **Depth.** Expansion stops after three levels, as in the 300-run. 39 nodes
-  are `NOT_YET_REVIEWED`, all reached at depth 3 or by a link added after the
-  last search.
+- **Depth.** Expansion stops after three levels, as in the 300-run. The 28
+  `NOT_YET_REVIEWED` graph nodes are all at depth 3, or no longer reachable
+  from a protest after the blind gate.
 
 ## Artifacts
 
@@ -331,10 +362,12 @@ earlier run's.
 | `events/protest-2000.stated.residual.jsonl`, `…claims.stated.jsonl`, `…edges.stated.jsonl`, `…edges.blind-stated.jsonl` | stated causes |
 | `events/protest-2000.*.final.jsonl` | mentions, conditions and nodes including the stated causes |
 | `events/protest-2000.claims.R4.new.jsonl`, `…edges.r4.jsonl`, `…edges.blind-r4.jsonl` | round 4 |
+| `events/protest-2000.claims.R5.new.jsonl`, `…edges.r5.jsonl`, `…edges.blind-r5.jsonl` | round 5 |
 | `events/protest-2000.stated2.residual.jsonl`, `…claims.stated2.jsonl`, `…edges.stated2.jsonl`, `…edges.blind-stated2.jsonl` | round-4 stated causes |
 | `events/protest-2000.status.jsonl` | search status |
+| `graph/human-edge-review.v4.jsonl` | v1.0's 238 verdicts + 110 from the spot check, sha256 `1dc483fb84278f15cf70ff518f971f179255560d61181ce3e8c124401d42dee9` |
 | `graph/node-merges.2000.jsonl` | 197 earlier + 3,845 pass-1 + 12,635 pass-2 + 124 pass-3 decisions, 5 superseding |
 | `scale/` | briefs, packets, judgements, `cycles.py`, `node_pairs.py`, `aliases.py`, `rescue_missed.py`, `rescue_global.py`, `stated_causes.py`, `add_rescue.py` |
 
 Store schema: `text_graph_2000`. Graph: `out/causal_graph.json`, version
-`47991052ea69d82ee5b40d40da54c7452f2efd138d6ef2fc39513c31aa3b9318`.
+`e4c4a65e2488c749d13ae1bfb8714ebe020ba8c549851e7556809c63ad0ff542`.
