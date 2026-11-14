@@ -215,6 +215,21 @@ then reviewed 100 of the 1,282 AI-only edges of graph `1e309d17`, drawn at rando
 - **Review time.** All 100 were decided in about eight minutes, so these are
   quick reads of the quoted evidence, not a re-reading of each article.
 
+**Can an AI find the bad implicit links instead?** Tried, and no.
+- A stricter AI pass (`scale/STRICT_BRIEF.md`) re-judged all 285 unchecked
+  implicit edges (334 claims), with the 31 spot-checked implicit edges mixed in
+  unmarked.
+- **The bar, set before it ran:** apply it only if, on the 30 decided spot-check
+  edges, it rejects at least 6 of the 10 the person rejected and keeps at least 16
+  of the 20 the person accepted.
+- **Result:** it rejected 8 of the 10, but kept only 6 of the 20. It keeps 30% of
+  good links and 20% of bad ones, so it barely tells them apart. Not applied.
+- **No simple rule works either.** Implicit `ESCALATES` split 5 accepted, 5
+  rejected, and the other relations are mixed too.
+- **So the graph is unchanged.** Every edge carries `evidence_quality`.
+  Filtering to `explicit` gives the measured-safe subset (69/69 right in the
+  sample). Finding the roughly 95 bad implicit edges needs a person.
+
 ## Cycles
 
 A cause cannot be its own effect, so every cycle holds a wrong edge.
