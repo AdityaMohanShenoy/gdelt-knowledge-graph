@@ -1,6 +1,6 @@
 # Scale-up to 2,000 articles
 
-**Status:** graph `406c4d71` has 1,379 edges over 1,171 nodes. 144 edges carry
+**Status:** graph `47991052` has 1,424 edges over 1,191 nodes. 144 edges carry
 a person's accept, carried over from v1.0 (all 206 person-accepted claims are on
 an edge; merges joined some of v1.0's 149 edges). Every other edge is AI-judged.
 No cycles; rebuilding gives identical bytes.
@@ -54,10 +54,10 @@ and every model is local.
 | Grievance and condition mentions / distinct conditions | 1,146 / 810 |
 | Same-event pairs judged / judged same | 8,913 / 1,970 |
 | Same-condition pairs judged / judged same | 2,661 / 1,440 |
-| Claims judged, three levels | 18,736 |
+| Claims judged, three levels | 20,016 |
 | Protest seeds | 373 |
 | Protests with at least one cause in the graph | 358 |
-| Edges / nodes in the graph | 1,379 / 1,171 |
+| Edges / nodes in the graph | 1,424 / 1,191 |
 
 ## Causal judging
 
@@ -137,7 +137,26 @@ the causes the blind judges reported missed.
 reported missing, 92 are still not covered by any graph edge (same lenient
 embedding test as above), against about 300 before these two steps. The new
 rounds' own judges reported more (277), mostly deeper causes of the new nodes.
-`stated_causes.py residual` lists them; another round would start there.
+`stated_causes.py residual` lists them.
+
+**Round 4: search the new nodes' own causes.**
+- 120 nodes at depth 1–2 were reached but never searched (`NOT_YET_REVIEWED`),
+  mostly the rescued and stated causes. Retrieval as in level 3
+  (`--cross-article-cap 8`, 180-day grievance window, `*.final.jsonl` inputs):
+  1,256 claims.
+- First judges accepted 51 (κ 0.66). Blind re-check kept 38 and accepted 1 of
+  51 decoys.
+- **Which event is the effect.** A stated-cause node quotes the same sentence as
+  the protest it caused, so its sentence also describes that protest. Judges split
+  on whether the effect is the event the node's fields name or the protest in its
+  sentence. The blind re-check, and every later judge, was told: the effect is
+  the event its fields name. That is why the blind pass dropped 13 of 51.
+- Then the missed causes again: 1,240 distinct reported, 171 not covered. 51 of
+  those had not been through extraction and are below level 3. They became 14
+  events and 9 conditions (26 skipped), and 24 claims. Judges accepted 19
+  (κ 1.0 on 6 double-annotated). Blind re-check kept 19 and accepted 2 of 19
+  decoys.
+- New node pairs (124 at ≥ 0.6, not yet decided): 2 same.
 
 ## Blind re-check (the gate that replaced the person)
 
@@ -207,6 +226,17 @@ judged against a node that a merge later changed:
 - Venugopal's protest call → the stone-pelting on the Nyay Yatra: the quote is
   the call to protest against it.
 
+**Round 4 added three cycles**, adjudicated the same way (`cycles/cuts4.jsonl`):
+- The statewide RG Kar protests → the rape-murder (ESCALATES): reversed.
+- The Delhi Chalo march → the barricades: the barricades went up on Feb 10, before
+  the march. The three person-accepted edges fix the direction the other way.
+- The mob attack on the police outpost → the Jaynagar girl's killing: the attack
+  followed the discovery of the killing.
+- The judge also flagged a person-accepted edge it could not cut,
+  `cl:c8f11b72b611a437` (doctors' nationwide protest → workplace security). Its
+  evidence is about the murder setting off the agitation. It stays, as a
+  person's verdict, and is listed here for re-checking.
+
 ## Duplicate nodes
 
 This uses the method of `graph_build.md`. The first pass ran on the 1,132 nodes
@@ -219,6 +249,7 @@ pair already decided.
 | 1 | 0.6–0.7 (seeded sample) | 2 / 200 |
 | 2 | ≥ 0.7, new pairs | 35 / 549 |
 | 2 | 0.6–0.7, every pair | 42 / 12,086 |
+| 3 | ≥ 0.6, pairs with round-4 nodes | 2 / 124 |
 
 - **The full band** found 42 duplicates where the sample predicted about 100.
   Most are repeat extractions of a few big events: the Delhi Chalo march, the
@@ -280,9 +311,9 @@ pair already decided.
 - **Missed merges.** About 800 same-event merges are estimated missed in the
   unjudged 0.25–0.4 band of event pairs. Graph nodes below 0.6 similarity were
   never paired.
-- **Depth.** Expansion stops after three levels, as in the 300-run. 122 nodes
-  are `NOT_YET_REVIEWED`: mostly the rescued and stated causes, whose own
-  causes were never searched.
+- **Depth.** Expansion stops after three levels, as in the 300-run. 39 nodes
+  are `NOT_YET_REVIEWED`, all reached at depth 3 or by a link added after the
+  last search.
 
 ## Artifacts
 
@@ -299,9 +330,11 @@ earlier run's.
 | `events/protest-2000.claims.rescue3.L123.jsonl`, `…edges.r3.jsonl`, `…edges.blind-r3.jsonl` | third rescue |
 | `events/protest-2000.stated.residual.jsonl`, `…claims.stated.jsonl`, `…edges.stated.jsonl`, `…edges.blind-stated.jsonl` | stated causes |
 | `events/protest-2000.*.final.jsonl` | mentions, conditions and nodes including the stated causes |
+| `events/protest-2000.claims.R4.new.jsonl`, `…edges.r4.jsonl`, `…edges.blind-r4.jsonl` | round 4 |
+| `events/protest-2000.stated2.residual.jsonl`, `…claims.stated2.jsonl`, `…edges.stated2.jsonl`, `…edges.blind-stated2.jsonl` | round-4 stated causes |
 | `events/protest-2000.status.jsonl` | search status |
-| `graph/node-merges.2000.jsonl` | 197 earlier + 3,845 pass-1 + 12,635 pass-2 decisions, 5 superseding |
+| `graph/node-merges.2000.jsonl` | 197 earlier + 3,845 pass-1 + 12,635 pass-2 + 124 pass-3 decisions, 5 superseding |
 | `scale/` | briefs, packets, judgements, `cycles.py`, `node_pairs.py`, `aliases.py`, `rescue_missed.py`, `rescue_global.py`, `stated_causes.py`, `add_rescue.py` |
 
 Store schema: `text_graph_2000`. Graph: `out/causal_graph.json`, version
-`406c4d71643fef995a1d72f8c20bbbb48bd13d296a54b82943acc6adfede8cfd`.
+`47991052ea69d82ee5b40d40da54c7452f2efd138d6ef2fc39513c31aa3b9318`.
