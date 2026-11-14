@@ -226,9 +226,14 @@ then reviewed 100 of the 1,282 AI-only edges of graph `1e309d17`, drawn at rando
   good links and 20% of bad ones, so it barely tells them apart. Not applied.
 - **No simple rule works either.** Implicit `ESCALATES` split 5 accepted, 5
   rejected, and the other relations are mixed too.
-- **So the graph is unchanged.** Every edge carries `evidence_quality`.
-  Filtering to `explicit` gives the measured-safe subset (69/69 right in the
-  sample). Finding the roughly 95 bad implicit edges needs a person.
+- **So the graph is unchanged, and the explain view hides them.** The published
+  graph keeps all edges, each with `evidence_quality`. `/api/explain`,
+  `/api/consequences` and `/api/explain/topics` now leave out AI-only implicit
+  edges by default (285 of 1,416; 344 of 358 protests keep a cause) and include
+  them with `implied=true`, which the page's "Include unchecked implied links"
+  box sets. Person-checked edges always show.
+- **The person's review of all 285** is open at the "Implied Link Review" page;
+  its verdicts will be folded in like the spot check's.
 
 ## Cycles
 

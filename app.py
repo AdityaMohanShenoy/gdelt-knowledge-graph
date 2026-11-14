@@ -108,13 +108,13 @@ def _date_filter(date_from: int, date_to: int) -> str:
 # The one runtime input besides the parquet: the graph pipeline/40_build_graph.py
 # compiled and published. Small (~300KB), read once, only by /api/explain*.
 GRAPH_FILE = ROOT / "out" / "causal_graph.json"
-_graph = None
+_graphs = {}
 
-def get_graph():
-    global _graph
-    if _graph is None and GRAPH_FILE.exists():
-        _graph = causal_query.Graph.load(GRAPH_FILE)
-    return _graph
+def get_graph(implied: bool = False):
+    # Default view hides AI-only links on implied evidence; implied=True shows all.
+    if implied not in _graphs and GRAPH_FILE.exists():
+        _graphs[implied] = causal_query.Graph.load(GRAPH_FILE, implied=implied)
+    return _graphs.get(implied)
 
 # ── Routes ───────────────────────────────────────────────────────────────────
 @app.get("/")
@@ -798,10 +798,10 @@ if (ROOT / "frontend").exists():
 
 # ── Causal questions over the compiled graph (Phase 13) ─────────────────────
 @app.get("/api/explain/topics")
-async def explain_topics(direction: str = "causes"):
+async def explain_topics(direction: str = "causes", implied: bool = False):
     """Starting points: for causes, the protests the graph explains, newest first;
     for effects, the causes that led to the most, most first."""
-    g = get_graph()
+    g = get_graph(implied)
     if g is None:
         return {"error": "no_graph", "topics": []}
     if direction == "effects":
@@ -813,15 +813,16 @@ async def explain_topics(direction: str = "causes"):
         topics = [causal_query.node_card(g, n, {}) for n in g.seeds]
         topics.sort(key=lambda t: (t["date"] or "", t["id"]), reverse=True)
     return {"graph_version": g.version, "topics": topics, "direction": direction,
-            "nodes": len(g.nodes), "edges": len(g.edges)}
+            "nodes": len(g.nodes), "edges": len(g.edges),
+            "hidden_implied": g.data.get("hidden_implied", 0)}
 
 
 @app.get("/api/explain")
 async def explain_question(q: str = "", cluster: int | None = None, k: int = 5,
-                           node: str | None = None):
+                           node: str | None = None, implied: bool = False):
     """Why did this happen? Ground the question, rank cause chains, explain from
     graph records only. Several matching clusters come back as a clarification."""
-    g = get_graph()
+    g = get_graph(implied)
     if g is None:
         return {"status": "error", "error": "no_graph"}
     return _ask(g, q, cluster, k, node, "causes")
@@ -839,11 +840,11 @@ def _ask(g, q: str, cluster, k: int, node, direction: str):
 
 @app.get("/api/consequences")
 async def consequences_question(q: str = "", cluster: int | None = None, k: int = 5,
-                                node: str | None = None):
+                                node: str | None = None, implied: bool = False):
     """What did this lead to? The same grounding and ranking as /api/explain, read
     downstream. Effects are only those the graph records: it was built by tracing
     the causes of protests, so it holds protests and the steps toward them."""
-    g = get_graph()
+    g = get_graph(implied)
     if g is None:
         return {"status": "error", "error": "no_graph"}
     return _ask(g, q, cluster, k, node, "effects")

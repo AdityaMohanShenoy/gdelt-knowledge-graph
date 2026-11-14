@@ -35,6 +35,17 @@ def tokens(text: str) -> list[str]:
             for w in words if len(w) > 2 and w not in STOP]
 
 
+def without_unchecked_implied(data: dict) -> dict:
+    """The default view: drop AI-only links that rest on implied evidence.
+
+    A person's random spot check of AI-only links found every explicit one right
+    (69/69) and a third of the implied ones wrong (20/30), and no AI pass could
+    tell those apart (docs/measurements/scale_2000.md). Person-checked links stay."""
+    keep = [e for e in data["edges"]
+            if e.get("human_verified") or e.get("evidence_quality") != "implicit"]
+    return {**data, "edges": keep, "hidden_implied": len(data["edges"]) - len(keep)}
+
+
 class Graph:
     def __init__(self, data: dict):
         self.data = data
@@ -51,9 +62,10 @@ class Graph:
         self._index()
 
     @classmethod
-    def load(cls, path: Path) -> "Graph":
+    def load(cls, path: Path, implied: bool = True) -> "Graph":
         raw = path.read_bytes()
-        return cls({**json.loads(raw), "version": hashlib.sha256(raw).hexdigest()})
+        data = {**json.loads(raw), "version": hashlib.sha256(raw).hexdigest()}
+        return cls(data if implied else without_unchecked_implied(data))
 
     def _components(self) -> dict[str, int]:
         """Weakly connected clusters, numbered by their smallest node id."""
