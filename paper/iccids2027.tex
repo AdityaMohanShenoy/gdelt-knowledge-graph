@@ -9,6 +9,8 @@
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
 \usetikzlibrary{positioning,arrows.meta}
 \usepackage{url}
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
@@ -87,8 +89,11 @@ and a pre-registered test showing that a stricter AI judge does not fix the resi
 \textbf{Event data.} GDELT~\cite{gdelt} codes events from global news with the CAMEO
 ontology~\cite{cameo}; ACLED~\cite{acled} codes political violence and protest by hand. Studies of
 machine-coded data report duplicate and mis-located events that limit micro-level
-analysis~\cite{hammond}. Event knowledge graphs such as EventKG~\cite{eventkg} link events across
-sources but do not encode why they happened.
+analysis~\cite{hammond}. ICEWS~\cite{icews} offers a curated alternative with
+the same record structure. Event knowledge graphs such as EventKG~\cite{eventkg} link events
+across sources, and temporal knowledge-graph models such as Know-Evolve~\cite{knowevolve} learn to
+predict future events from past ones; neither encodes \emph{why} an event happened, and a
+predictive model offers no inspectable reason for its output.
 
 \textbf{Causal relation extraction.} Corpora such as BECauSE~\cite{because} and Causal-TimeBank
 \cite{mirza} annotate causal language within sentences; surveys cover pattern-based, statistical
@@ -97,7 +102,8 @@ prediction~\cite{radinsky}. These works link mentions within a document; we link
 cross-article events and conditions into multi-level chains, with each link traceable to a quote.
 
 \textbf{LLMs as annotators and judges.} LLMs can match or exceed crowd workers on text
-annotation~\cite{gilardi} and can stand in for human evaluation~\cite{chiang}, but LLM judges show
+annotation~\cite{gilardi}, including political text~\cite{tornberg}, and can stand in for human
+evaluation~\cite{chiang}, but LLM judges show
 position and self-preference biases~\cite{zheng,wangfair}. We treat the LLM judge as a component
 whose precision must be measured against people, and we report where it fails.
 
@@ -132,6 +138,24 @@ stages replace the human review of the pilot when the system runs without a pers
 \label{fig:pipeline}
 \end{figure}
 
+\subsection{Problem Formulation}
+The output is a directed graph $G=(V,E)$. A node $v\in V$ is either an \emph{event} (an action with
+actors, targets, place and a time range) or a \emph{condition} (a standing state or grievance with a
+validity window). An edge $u\rightarrow v$ asserts that $u$ led to $v$ and carries a relation
+$r\in\mathcal{R}$ (five types, Section~\ref{sec:judge}), a strength $s\in\{1,2,3\}$, an evidence
+type $q\in\{\textit{explicit},\textit{implicit}\}$, the verbatim quotes and source URLs that support
+it, and the IDs of the \emph{claims} behind it. A claim is one judged candidate pair. With $H(c)$ a
+person's verdict on claim $c$, $A(c)$ the first AI verdict and $B(c)$ the blind re-check, $c$ supports
+an edge if and only if
+\begin{equation}
+H(c)=\textit{accept} \;\lor\; \bigl(H(c)=\bot \land A(c)=\textit{accept} \land
+B(c)\neq\textit{reject}\bigr).
+\label{eq:gate}
+\end{equation}
+Every node reached by the expansion also records a search status: \textsc{parents\_found},
+\textsc{no\_supported\_parent\_found}, \textsc{not\_yet\_reviewed}, \textsc{unverifiable} or
+\textsc{out\_of\_scope}, so that ``no cause was found'' and ``nobody looked'' stay distinguishable.
+
 \subsection{Corpus and Screening}
 We start from GDELT event records for India in 2024 and fetch the source articles, extracting text
 with a production fetcher. Articles are drawn in a fixed, seeded hash order: a 300-article pilot,
@@ -148,6 +172,13 @@ Grievances and standing states (a policy in force, unpaid dues, a water crisis) 
 \emph{conditions} with a validity window, because the pilot showed that most missed causes are
 conditions rather than events. The scale-up produced 7{,}083 event mentions and 1{,}146 condition
 mentions.
+
+\textbf{Time.} Each mention's time expression (``on Tuesday'', ``February 13'') is resolved against
+the article's report date, its earliest GDELT observation, into a best date, a range and a
+confidence. A mention with no usable expression falls back to the report date with a wide,
+low-confidence range, looking backward for events that happened and forward for announced ones.
+These dates enforce causal order: a candidate dated after its effect is never proposed, and judges
+reject it as \textsc{temporally\_invalid} when the text shows it came later.
 
 \subsection{Canonicalisation}
 Mentions of the same real-world event in different articles must become one node. Candidate pairs
@@ -166,6 +197,7 @@ propose candidates; none counts as evidence. To bound cost, all same-article can
 the top eight from other articles per target.
 
 \subsection{Causal Judging}
+\label{sec:judge}
 Each packet shows one effect, the full articles that report it, and its candidates, without
 retrieval scores. The judge accepts a candidate only when the text states or plainly shows the link
 (``over'', ``in response to'', ``protesting against'', an earlier stage of the same dispute, the call
@@ -177,7 +209,25 @@ carries one of eight reasons, for example \textsc{correlated\_only}, \textsc{wro
 \textsc{temporally\_invalid} or \textsc{duplicate\_event}. Judges also list causes the article states
 that no candidate represents. A quarter of the seeds are judged twice, independently, and agreement
 is reported as Cohen's $\kappa$~\cite{cohen}. Accepted causes become the next targets, to a depth of
-three.
+three. Fig.~\ref{fig:judgement} shows two judgements from one real packet.
+
+\begin{figure}[t]
+\centering
+\footnotesize
+\begin{minipage}{0.97\columnwidth}
+\textbf{Effect:} doctors' protests across India, August 2024.\\[2pt]
+\textbf{c22} \textit{accept}, \textsc{triggers}, strength 3, explicit.\\
+\textit{Evidence:} ``The demonstrations were triggered by a horrific case of sexual violence at
+one of India's oldest hospitals''\\
+\textit{Supporting:} ``In response to the killing, thousands of Indian doctors went on strike''\\
+\textit{Why:} rape-murder explicitly triggered the protests.\\[3pt]
+\textbf{c8} \textit{reject}, \textsc{correlated\_only}.\\
+\textit{Why:} BJP demand for resignation; parallel political reaction, no link.
+\end{minipage}
+\caption{Two judgements from one packet, as recorded. Quotes are checked character for character
+against the shown articles; a reject keeps its reason as a hard negative.}
+\label{fig:judgement}
+\end{figure}
 
 \subsection{Graph Compilation}
 The store is append-only and the compiler is deterministic: the same inputs give a byte-identical
@@ -196,6 +246,17 @@ cannot-link constraint in the sense of constrained clustering~\cite{wagstaff}.
 algorithm~\cite{tarjan} on the merged graph, holds a wrong link. A fixed rule (cut the weakest
 link) cut correct links in our tests, so a fresh agent reads each cycle's evidence and names the
 link whose quote does not support it.
+
+\subsection{Answering Questions}
+A query service answers ``why did $X$ happen?'' and ``what did $X$ lead to?'' from graph records
+alone, with no model inference at query time. A question is grounded by BM25~\cite{bm25} over each
+node's description, actors, places and incoming evidence quotes; if the best match in a second
+connected story scores at least 0.8 of the best overall, the service asks which story is meant
+instead of guessing. Cause chains of up to three links ending at the grounded node are ranked by the
+product of each link's strength, an evidence-type weight and a corroboration bonus, and the best
+chain per root cause is shown. Each sentence of the answer is filled from one edge's record,
+including its quote and source links, so an answer cannot state a relation the graph does not hold;
+a test checks this. Every answer also lists the ancestors nobody searched.
 
 \section{Evaluation Protocol}
 We evaluate in two phases. In the \textbf{pilot} (300 articles), a person reviewed every link of the
@@ -223,9 +284,33 @@ A blind re-check accepted 148 and rejected 59. The owner then reviewed all 207 a
 so 15\% of the AI's accepted links were wrong. \textbf{All 31 rejected links were among the 59 the
 blind judge had rejected}; the person rejected none of the 148 blind-accepted links, while
 overturning 28 blind rejections (Table~\ref{tab:calib}). A blind accept is therefore strong evidence;
-a blind reject is close to a coin flip. Against 103 causes documented by 67 independent sources, the
+a blind reject is close to a coin flip. Blind rejections rose with depth (24\%, 31\% and 62\% at
+depths 1, 2 and 3) and were more frequent for links that existed only through a node merge (40\%
+against 25\%), which is why merges and deep links get the closest scrutiny. Against 103 causes documented by 67 independent sources, the
 pilot recovered 25\% strictly and 43\% including partial matches; for half of the documented
 causes the graph had no node at all, mostly because the 139-article corpus never reports them.
+Table~\ref{tab:chain} breaks the recovered share down by kind of cause: trigger events and
+grievances were found about half the time, while the calls that organised a protest and the earlier
+stages of a dispute were found least, because single news reports rarely mention them.
+
+\begin{table}[t]
+\caption{Pilot: Documented Causes Recovered, by Kind}
+\label{tab:chain}
+\centering
+\footnotesize
+\begin{tabular}{@{}lr@{}}
+\toprule
+Kind of documented cause & In chain or partial \\
+\midrule
+Specific trigger events & 14 / 28 \\
+Conditions and grievances & 19 / 39 \\
+Earlier stages of the same dispute & 6 / 18 \\
+Mobilising calls and decisions & 5 / 18 \\
+\midrule
+All (103 causes, 67 independent sources) & 44 / 103 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{table}[t]
 \caption{Calibrating the Blind Gate}
@@ -293,7 +378,10 @@ Depth & Judged & Accepted & $\kappa$ & Stated-cause recall \\
 \end{tabular}
 \end{table}
 
-\textbf{Cycles and merges.} The blind gate alone removed three of the first four cycles. In total
+\textbf{Cycles and merges.} The blind gate alone removed three of the first four cycles. The rule we first tried, cutting each cycle's weakest link, failed
+on real cases: in a cycle between a farmer leader's 17-day fast and his worsening health, it cut
+``the fast caused his worsening health'' and kept the reverse link, whose quote was in fact about
+the Supreme Court's concern. In total
 the cycle adjudicator cut eleven links; most quoted a different event than the one they pointed to,
 or had been judged against a node that a later merge changed. Pairwise node judging covered
 16{,}604 pairs, every pair with similarity $\ge 0.6$, and merged 151 duplicates; a re-read of the
@@ -337,16 +425,51 @@ runs from the farmers' \emph{Delhi Chalo} march (13 February 2024) through the l
 to the 10 March \emph{rail roko}. The first link (\textsc{escalates}) rests on ``the two forums to
 spread this agitation countrywide call upon the farmers and labourers across the country'', the
 second (\textsc{mobilizes}) on ``a `rail roko' protest called by the Samyukta Kisan Morcha
-(Non-Political) and the Kisan Mazdoor Morcha''; each quote links to its source article. Of 1{,}020 distinct causes reported missing by
+(Non-Political) and the Kisan Mazdoor Morcha''; each quote links to its source article.
+
+Table~\ref{tab:graph} describes the final graph. \textsc{motivates} dominates, reflecting how
+often articles explain a protest by the grievance behind it. Of 805 event-to-event links with dated
+ends, 352 join events on the same day and the median gap is one day; 48 span more than a month,
+mostly long-running grievances and disputes. Of the reached nodes, 682 have supported causes and
+429 were searched without finding one. The 18{,}268 rejected claims are kept, with their reasons, as
+hard negatives.
+
+\begin{table}[t]
+\caption{The Final Graph (version a0fee89b)}
+\label{tab:graph}
+\centering
+\footnotesize
+\begin{tabular}{@{}lr@{}}
+\toprule
+Property & Links \\
+\midrule
+\textsc{motivates} / \textsc{triggers} / \textsc{escalates} & 676 / 325 / 235 \\
+\textsc{prompts\_response} / \textsc{mobilizes} & 119 / 61 \\
+Explicit / implicit evidence & 1{,}067 / 349 \\
+Strength 3 / 2 / 1 & 592 / 475 / 349 \\
+Depth 1 / 2 / 3 & 798 / 480 / 138 \\
+Reported by more than one outlet & 122 \\
+\midrule
+Nodes: events / conditions & 834 / 354 \\
+\bottomrule
+\end{tabular}
+\end{table} Of 1{,}020 distinct causes reported missing by
 the main judging rounds, 92 remained uncovered after recovery.
 
 \subsection{How Accurate Are the AI-Only Links?}
 Table~\ref{tab:spot} gives the person's verdicts on 100 random AI-only links. Overall precision is
 89/99 (90\%; 95\% CI 82--94\%; one unsure). The errors are concentrated: \textbf{every link backed by
 explicit causal wording was right} (69/69, an error rate below about 4\% at 95\% confidence), while a
-third of links resting on implied evidence were wrong. Six of the ten errors were
-\textsc{escalates} links, mostly joining two reports of the same ongoing protest or event; the
-others quoted only one side of the link, or a different event than the node.
+third of links resting on implied evidence were wrong. The ten errors fall into three patterns.
+(i) \emph{Two reports of one thing linked as escalation}: ``opposition protests on the Adani issue
+have been taking place \ldots{} ever since the start of the winter session'' was linked as an earlier
+stage of a later INDIA-bloc protest over the same issue in the same session, and an arrest by the
+Enforcement Directorate was linked as an earlier stage of a second report of an arrest by the same
+agency, on a quote about the underlying excise case. Six of the ten errors were
+\textsc{escalates} links of this kind. (ii) \emph{A quote that shows only one side}: a grievance
+(``the government is still calling our payment as honorarium'') linked to a march the quote does not
+mention. (iii) \emph{A quote about a different event} than the node it supports, usually after a
+merge.
 
 \begin{table}[t]
 \caption{Human Spot Check of 100 Random AI-Only Links}
@@ -366,6 +489,38 @@ From retrieval / rescue / stated-cause nodes & 79/89, 4/4, 6/6 \\
 \end{tabular}
 \end{table}
 
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.95\columnwidth, height=4.1cm,
+  ybar, bar width=10pt, ymin=0.4, ymax=1.04,
+  ylabel={Precision}, ylabel style={font=\footnotesize},
+  symbolic x coords={All,Explicit,Implicit,Depth 1,Depth 2,Depth 3},
+  xtick=data, xticklabel style={font=\scriptsize},
+  yticklabel style={font=\scriptsize},
+  axis x line*=bottom, axis y line*=left,
+  enlarge x limits=0.1, ymajorgrids, grid style={black!12},
+  error bars/y dir=both, error bars/y explicit,
+  error bars/error bar style={black!70}]
+\addplot[fill=black!25, draw=black!70] coordinates {
+  (All,0.899) += (0,0.045) -= (0,0.075)
+  (Explicit,1.0) += (0,0) -= (0,0.053)
+  (Implicit,0.667) += (0,0.141) -= (0,0.179)
+  (Depth 1,0.98) += (0,0.016) -= (0,0.087)
+  (Depth 2,0.786) += (0,0.097) -= (0,0.145)
+  (Depth 3,1.0) += (0,0) -= (0,0.324)};
+\end{axis}
+\end{tikzpicture}
+\caption{Precision of AI-only links in the human spot check. 95\% Wilson intervals: all
+0.82--0.94; explicit 0.95--1.00; implicit 0.49--0.81; depth 1 0.89--1.00; depth 2 0.64--0.88;
+depth 3 0.68--1.00.}
+\label{fig:precision}
+\end{figure}
+
+Fig.~\ref{fig:precision} shows the same numbers with their intervals: the implied-evidence and
+depth-2 subsets are the only ones whose intervals fall clearly below the explicit links'.
+
 \textbf{Can a stricter AI judge find the wrong implied links?} We re-judged all 285 unchecked
 implied links under a stricter brief (both sides must appear in a quote; two reports of one
 campaign are duplicates), with the 31 spot-checked implied links mixed in unmarked. We fixed the bar
@@ -381,6 +536,57 @@ phases, but it shares the first judge's blind spot: both read implied links as p
 judge with the same training does not fix this, which is consistent with known self-preference in
 LLM judges~\cite{wangfair}. Evidence type, which the judge reports itself, is the best predictor of
 error we found, and it is cheap to expose to users.
+
+\textbf{Reproducibility.} Every stage writes hashed artefacts and never overwrites them; the
+store is insert-only; and the compiler turns the store and a small configuration into a graph whose
+SHA-256 is its version, so the same inputs rebuild it byte for byte. A changed threshold yields a
+new version rather than a silently different graph. Human verdicts are stored as annotations that
+outrank AI judgements, so a person can correct the graph without editing it. The pipeline has 345
+automated tests.
+
+\textbf{Ethics.} The corpus is public news about public protests, and the graph names public
+figures and organisations as reported. Causal claims about protests are politically sensitive, so
+the graph never states a link without the quote and source behind it, labels each link's evidence
+type and reviewer, and keeps the rejected candidates so that what the system declined to claim is
+also on record.
+
+\textbf{What each safeguard caught.} Table~\ref{tab:guards} counts, for the scale-up, the
+errors that each mechanism removed or prevented before any person looked. None of them alone would
+have been enough; together they leave errors concentrated in one place, implied links.
+
+\begin{table}[t]
+\caption{Errors Caught by Each Safeguard in the Scale-up}
+\label{tab:guards}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{0.62\columnwidth}r@{}}
+\toprule
+Safeguard & Caught \\
+\midrule
+Blind re-check, main pass (AI accepts removed) & 143 \\
+Blind re-check, recovery rounds (AI accepts removed) & 32 \\
+Cycle adjudication (links cut) & 11 \\
+Re-read of ``same'' merge calls (merges reversed) & 4 \\
+Cannot-link rule (merges blocked) & 5 \\
+Date cap for undated stated causes (dates corrected) & 54 \\
+Human spot check (links removed) & 10 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Cost and generality.} The method needs only news text, a written rubric and an LLM
+agent; nothing in it is specific to protests. Its cost is dominated by judging: the scale-up judged
+20{,}129 candidate claims for 1{,}416 links, about 14 judgements per link kept, plus the blind
+re-checks, node-pair and cycle judgements. Because retrieval keeps every same-article candidate but
+caps cross-article ones, cost grows roughly with the number of articles rather than with its square.
+The same pipeline could therefore be pointed at strikes, communal violence or policy disputes in
+other regions by changing only the screening brief.
+
+\textbf{Future work.} Most remaining structure errors involve ongoing campaigns, which the merge
+rules split by date. A campaign layer with a \textsc{part\_of} relation would let a call, a new
+group joining or a one-day action belong to a campaign without being it. The second open direction
+is cheaper human verification: since the judge's own evidence type predicts its errors, review
+effort can be spent only where it changes the answer.
 
 \textbf{Limitations.} (i) The scale-up's precision rests on a 100-link sample; about 900 explicit
 AI-only links remain unchecked. (ii) A later pass in which the owner accepted all 285 implied links
@@ -423,6 +629,13 @@ no. 4, pp. 71:1--71:37, 2021.
 in \textit{Proc. NeurIPS Datasets and Benchmarks Track}, 2023.
 \bibitem{wangfair} P. Wang \textit{et al.}, ``Large language models are not fair evaluators,'' in
 \textit{Proc. ACL}, 2024.
+\bibitem{icews} E. Boschee \textit{et al.}, ``ICEWS coded event data,'' Harvard Dataverse, 2015.
+\bibitem{knowevolve} R. Trivedi, H. Dai, Y. Wang, and L. Song, ``Know-Evolve: Deep temporal reasoning
+for dynamic knowledge graphs,'' in \textit{Proc. ICML}, 2017, pp. 3462--3471.
+\bibitem{tornberg} P. T\"{o}rnberg, ``ChatGPT-4 outperforms experts and crowd workers in annotating
+political Twitter messages with zero-shot learning,'' arXiv:2304.06588, 2023.
+\bibitem{bm25} S. Robertson and H. Zaragoza, ``The probabilistic relevance framework: BM25 and
+beyond,'' \textit{Found. Trends Inf. Retr.}, vol. 3, no. 4, pp. 333--389, 2009.
 \bibitem{eventkg} S. Gottschalk and E. Demidova, ``EventKG: A multilingual event-centric temporal
 knowledge graph,'' in \textit{Proc. ESWC}, 2018, pp. 272--287.
 \bibitem{because} J. Dunietz, L. Levin, and J. Carbonell, ``The BECauSE corpus 2.0: Annotating
