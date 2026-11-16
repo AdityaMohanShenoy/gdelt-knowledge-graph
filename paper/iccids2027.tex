@@ -13,10 +13,14 @@
 \pgfplotsset{compat=1.17}
 \usetikzlibrary{positioning,arrows.meta}
 \usepackage{url}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}
+\algrenewcommand\algorithmicensure{\textbf{Output:}}
 
 \begin{document}
 
-\title{Blind-Gated Agentic Annotation for Evidence-Grounded Causal Knowledge Graphs of Protest Events}
+\title{BlindGate: A Labour-Efficient Algorithm for Evidence-Grounded Causal Knowledge Graphs of Protest Events}
 
 % TODO before submission: confirm the author list (the survey [1] was co-authored by
 % A. R. Bharadwaj, A. A. Hoskere, A. Nambiath and B. Das) and add e-mail addresses.
@@ -30,24 +34,22 @@ e-mail (to be completed)}
 \maketitle
 
 \begin{abstract}
-Machine-coded event databases such as GDELT record what happened, but not why it happened.
-We first show that causes cannot be recovered from their metadata: on 2024 Indian protest events,
-a co-occurrence scorer retained shuffled event pairs as often as genuine ones (4.0\% against 3.8\%
-at its ``pattern'' grade), and none of the 322 candidates it proposed was a cause supported by the
-source text. We therefore construct causal links from the text of the news articles themselves.
-A pipeline of large language model (LLM) agents extracts events and grievances as verbatim spans,
-merges duplicate reports, proposes candidate causes, and judges each candidate under a written
-rubric that requires an exact supporting quotation. Since no person can review thousands of such
-links, every link accepted by the AI must also survive a blind re-examination by a fresh judge,
-calibrated with decoys; cycles are resolved by an adjudicating agent, and node merges respect
-cannot-link constraints derived from human verdicts. In a 300-article pilot that was reviewed in
-full by a person, the blind re-examination never accepted a link that the reviewer later rejected
-(0 of 148). Extended to 2{,}000 articles without human involvement, the system produced 1{,}416
-sourced links that explain 358 protests. A random human audit of 100 AI-only links found 89 of 99
-correct (95\% CI 82--94\%): all links stated with explicit causal wording were correct (69/69),
-whereas only two thirds of those resting on implied evidence were (20/30). A stricter AI judge
-could not isolate the faulty implied links, so the system reports the type of evidence behind each
-link and withholds unchecked implied links by default.
+Causal knowledge graphs built from news promise answers to questions such as why a protest
+happened, but building them has required exhaustive human annotation, which does not scale. We
+first show that the shortcut of inferring causes from event metadata fails: on 2024 Indian protest
+events, a GDELT co-occurrence scorer retained shuffled pairs as often as genuine ones (4.0\% against
+3.8\%), and none of the 322 candidates it proposed was a cause supported by the source text. We then
+present BlindGate, an algorithm that constructs causal links from the text of the articles while
+confining human effort to calibration and audit. BlindGate treats large language model (LLM) judges
+as fallible oracles: every field is a verbatim span, every link requires a mechanically verified
+quotation, and an accepted link survives only if an independent blind judge, calibrated with decoys,
+accepts it again. Graph repair resolves cycles by adjudication and merges duplicate nodes under
+cannot-link constraints derived from human verdicts, and a recovery step adds causes that an
+article states but extraction missed. Calibrated on a 300-article pilot that a person reviewed in
+full, the blind gate never passed a link the reviewer rejected (0 of 148). On 2{,}000 articles,
+BlindGate produced 1{,}416 sourced links explaining 358 protests while reducing human verdicts per
+published link from 1.18 to 0.07. A random human audit of 100 links found 89 of 99 correct (95\% CI
+82--94\%), including all 69 stated with explicit causal wording.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -67,22 +69,26 @@ or ``after''.
 
 In an earlier survey of causal reasoning over temporal knowledge graphs (TKGs)~\cite{survey}, we
 argued that the field rewards temporal association rather than causal validity, and that verifiable
-evidence grounding is the missing ingredient. This paper puts that argument into practice. We build
-a causal knowledge graph~\cite{hogan} from what the articles say, and from nothing else. Every link
-carries the sentence that supports it, its source URL, its dates, and a complete record of who
-judged it. The labelling is performed by LLM agents~\cite{agentsurvey,react}, which makes the scale
-affordable but raises the question that every LLM-as-a-judge study must face~\cite{zheng,wangfair}:
-how far can the judgements be trusted when no person checks them?
+evidence grounding is the missing ingredient. This paper puts that argument into practice. Its central obstacle is labour: a causal
+knowledge graph~\cite{hogan} in which every link can be checked against a source requires a
+judgement for every candidate pair, and even a modest corpus yields tens of thousands of candidates.
+Our 300-article pilot needed a person to review every published link. We therefore designed an
+algorithm, BlindGate, whose aim is to keep the graph verifiable while removing the person from the
+construction loop. It uses LLM agents~\cite{agentsurvey,react} as judges, but never trusts a single
+judgement: correctness rests on verbatim evidence, on an independent blind re-judgement whose
+reliability is calibrated against human verdicts, and on repair rules that defer to whatever human
+verdicts exist. This addresses the question that every LLM-as-a-judge study must
+face~\cite{zheng,wangfair}, namely how far the judgements can be trusted when no person checks
+them.
 
-Our contributions are fivefold. (i) We report a negative result that motivates the design: a fused
-metadata scorer over GDELT cannot distinguish real cause--effect pairs from shuffled ones. (ii) We
-describe an agentic, evidence-grounded pipeline in which every extracted field is a verbatim span
-and every causal link requires a mechanically verified quotation, with rejected candidates retained
-as hard negatives. (iii) We introduce blind gating as a substitute for human review, together with
-agent-adjudicated cycles and merges constrained by human verdicts. (iv) We recover causes that
-retrieval misses, including causes an article states but extraction never captured. (v) We measure
-the precision of the AI-only links against a human audit, broken down by evidence type, and show
-with a pre-registered test that a stricter AI judge does not repair the remaining errors.
+Our contributions are as follows. (i) A negative result that motivates the design: a fused
+metadata scorer over GDELT cannot distinguish real cause--effect pairs from shuffled ones. (ii) The
+BlindGate algorithm, which combines evidence-grounded judging, a decoy-calibrated blind gate,
+constrained graph repair and stated-cause recovery, and whose cost grows linearly with the corpus.
+(iii) An analysis of human labour, showing that human verdicts per published link fell roughly
+seventeen-fold between the fully reviewed pilot and the gated scale-up. (iv) A human audit of the
+resulting links, broken down by evidence type, together with a pre-registered test showing that a
+stricter AI judge does not remove the residual errors.
 
 \section{Related Work}
 \textbf{Event data and temporal knowledge graphs.} GDELT codes events from global news with the
@@ -117,38 +123,60 @@ outputs may be fluent but unsupported~\cite{hallucination}; grounding them in st
 is one remedy~\cite{pan24}. We therefore treat the LLM judge as a component whose precision must be
 measured against people, and we report where it fails.
 
-\section{Pipeline}
-Fig.~\ref{fig:pipeline} summarises the stages. All model calls are made by LLM agents operating
-under written briefs, and embeddings are computed by a locally run \texttt{all-mpnet-base-v2}
-sentence encoder~\cite{sbert}. Each stage writes versioned, hashed artefacts and never overwrites
-them.
+\section{The BlindGate Algorithm}
+Algorithm~\ref{alg:blindgate} gives the construction and Algorithm~\ref{alg:repair} the graph
+repair. The judge $J$ is an LLM agent working under a written rubric; it is used as an oracle that
+may err, and no single call of it decides a link. Embeddings come from a locally run
+\texttt{all-mpnet-base-v2} sentence encoder~\cite{sbert}, and every step writes versioned, hashed
+artefacts that are never overwritten.
 
-\begin{figure}[t]
-\centering
-\begin{tikzpicture}[
-  box/.style={draw, rounded corners=1.5pt, align=center, font=\scriptsize,
-              minimum height=6.5mm, text width=19mm, inner sep=2pt},
-  gate/.style={box, fill=black!8},
-  arr/.style={-{Stealth[length=1.6mm]}, semithick}]
-\node[box] (a) {GDELT 2024\\India URLs};
-\node[box, right=3mm of a] (b) {Fetch \&\\screen articles};
-\node[box, right=3mm of b] (c) {Events \& conditions\\(verbatim spans)};
-\node[box, below=4mm of c] (d) {Canonicalise\\(judged merges)};
-\node[box, left=3mm of d] (e) {Retrieve\\candidate causes};
-\node[box, left=3mm of e] (f) {Judge under\\rubric (quote)};
-\node[gate, below=4mm of f] (g) {Blind re-check\\with decoys};
-\node[gate, right=3mm of g] (h) {Cycles \& merges\\(constrained)};
-\node[box, right=3mm of h] (i) {Versioned graph\\+ query};
-\draw[arr] (a) -- (b); \draw[arr] (b) -- (c); \draw[arr] (c) -- (d);
-\draw[arr] (d) -- (e); \draw[arr] (e) -- (f); \draw[arr] (f) -- (g);
-\draw[arr] (g) -- (h); \draw[arr] (h) -- (i);
-\draw[arr, dashed] (f.north) .. controls +(0,0.5) and +(0,0.5) .. (e.north);
-\end{tikzpicture}
-\caption{The pipeline. The dashed arrow marks recursion: accepted causes become new targets, up
-to a depth of three. Shaded stages stand in for the pilot's human review when the system runs
-without a person.}
-\label{fig:pipeline}
-\end{figure}
+\begin{algorithm}[t]
+\caption{BlindGate: construction of the causal graph}
+\label{alg:blindgate}
+\small
+\begin{algorithmic}[1]
+\Require articles $D$; judge $J$; human verdicts $H$ (possibly empty); depth $L$; cap $k$
+\Ensure causal graph $G$ with an evidence record per edge
+\State $V \gets \textsc{Canonicalise}(\textsc{Extract}(D))$ \Comment{verbatim spans}
+\State $T \gets$ protest events of $V$; \ $C \gets \emptyset$
+\For{$\ell = 1$ \textbf{to} $L$}
+  \For{each target $t \in T$}
+    \State $P_t \gets$ same-article candidates $\cup$ top-$k$ others
+    \For{each claim $c=(u\rightarrow t)$, $u \in P_t$}
+      \State $A(c) \gets J(c)$ \Comment{needs a verified quote}
+    \EndFor
+    \State $M_t \gets$ causes $J$ found stated but not offered
+  \EndFor
+  \State $V, C \gets \textsc{Recover}(M, V, C)$ \Comment{Sec.~\ref{sec:recover}}
+  \State $T \gets \{u : A(u\rightarrow t)=\textit{accept}\}$
+\EndFor
+\For{each $c$ with $A(c)=\textit{accept}$ and $H(c)=\bot$}
+  \State $B(c) \gets J(c)$ blind, mixed 1:1 with decoys
+\EndFor
+\State $E \gets \{c \in C : \text{Eq.~(\ref{eq:gate}) holds}\}$
+\State \Return $\textsc{Repair}(V, E, H)$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\caption{\textsc{Repair}: constrained merges and cycle removal}
+\label{alg:repair}
+\small
+\begin{algorithmic}[1]
+\Require nodes $V$; gated edges $E$; human verdicts $H$
+\State $X \gets \{\{a,b\} : (a\rightarrow b) \in E,\ H=\textit{accept}\}$ \Comment{cannot-link}
+\For{each pair $(a,b)$ judged identical, latest decision first}
+  \If{$\textsc{Union}(a,b)$ would join both ends of a pair in $X$}
+    \State skip the merge
+  \Else \ $\textsc{Union}(a,b)$
+  \EndIf
+\EndFor
+\While{the merged graph has a cycle $S$ (Tarjan)}
+  \State drop the edge of $S$ whose quotation $J$ finds unsupported
+\EndWhile
+\State \Return the merged, acyclic graph
+\end{algorithmic}
+\end{algorithm}
 
 \subsection{Problem Formulation}
 The output is a directed graph $G=(V,E)$. A node $v\in V$ is either an \emph{event}, an action with
@@ -213,7 +241,7 @@ states that no candidate represents. A quarter of the targets are judged twice, 
 agreement is reported as Cohen's $\kappa$~\cite{cohen}. Accepted causes become the next targets, to
 a depth of three.
 
-\subsection{Graph Compilation and Querying}
+\subsection{Gating, Repair and Querying}
 The store is append-only and the compiler is deterministic: identical inputs produce a
 byte-identical graph whose SHA-256 digest serves as its version. Three rules govern compilation.
 First, a person's verdict outranks every AI judgement; without one, an AI-accepted claim survives
@@ -225,6 +253,18 @@ person-accepted link in one node, a cannot-link constraint in the sense of const
 clustering~\cite{wagstaff}. Third, since a cause cannot be its own effect, every cycle found with
 Tarjan's algorithm~\cite{tarjan} contains a wrong link; a fresh agent reads the evidence of each
 cycle and names the link whose quotation fails to support it.
+
+\textbf{Recovery.}\label{sec:recover} The judges' lists of missed causes drive
+\textsc{Recover}: each missed cause is first matched against unjudged candidates, and otherwise
+turned into a new event or condition whose every field is a verbatim span of the sentence stating
+it, dated no later than the effect it is said to have caused. New claims are judged and gated like
+any other.
+
+\textbf{Cost.} With $n$ articles, retrieval keeps the same-article candidates and at most $k$ others
+per target, so the number of judged claims grows as $O(nk)$ rather than $O(n^2)$; the blind gate
+adds one further judgement per accepted claim and per decoy, and repair runs in time linear in the
+graph size per cycle. Human effort is independent of $n$ during construction: it is needed only to
+calibrate the gate once and to audit a sample.
 
 A query service answers ``why did $X$ happen?'' and ``what did $X$ lead to?'' from the graph records
 alone, with no model inference at query time. Questions are grounded with BM25~\cite{bm25}, the
@@ -341,15 +381,19 @@ pointed to. Pairwise judging covered 16{,}604 node pairs, every pair with a simi
 decisions. The cannot-link rule blocked five merges, each of which would have joined a union's
 announcement of a march with the march itself, a distinction a person had already drawn.
 
+\subsection{Human Labour}
+In the pilot, a person issued 207 link verdicts for 176 published links, or 1.18 per link, and every
+link waited for that review. In the scale-up, construction required no human verdicts at all; the
+agents judged 20{,}129 causal claims, 8{,}913 same-event pairs and 16{,}604 node pairs, and a person
+then audited 100 of the 1{,}416 published links, or 0.07 per link. Human verdicts per published
+link thus fell about seventeen-fold, while the audit below shows what that saving costs in
+precision.
+
 \subsection{Recovering Causes That Retrieval Missed}
-The judges' lists of missed causes became a work queue (Table~\ref{tab:rescue}). Matching a missed
-cause against the target's unjudged candidates, and then against every event in the corpus,
-recovered few links, because the closest candidates were usually protests \emph{about} the cause
-rather than the cause itself. The real gap lay in extraction. Agents therefore turned each
-still-missing cause into a new event or condition whose every field is a verbatim span of the
-sentence stating it, and an undated new cause is given no date later than the effect it is said to
-have caused. These links were judged and blind-gated like any other. Searching for the causes of
-the new nodes then converged, with the final round judging 113 candidates and accepting three.
+Table~\ref{tab:rescue} shows the recovery rounds. Matching missed causes against existing
+candidates recovered few links, because the closest candidates were usually protests \emph{about}
+the cause rather than the cause; creating the stated causes as new nodes recovered most. Searching
+for the causes of the new nodes then converged, the final round accepting 3 of 113 candidates.
 
 \begin{table}[t]
 \caption{Recovery Rounds (Claims Judged, Accepted and Kept by the Blind Gate)}
@@ -455,10 +499,8 @@ the safeguards removed or prevented substantial error before any person looked: 
 removed 175 AI acceptances across the main and recovery rounds, cycle adjudication cut 11 links,
 the cannot-link rule blocked 5 merges, and date capping corrected 54 undated causes.
 
-The method needs only news text, a written rubric and an LLM agent, and nothing in it is specific
-to protests. Its cost is dominated by judging, at about 14 judged claims per link retained, and
-because retrieval caps cross-article candidates, cost grows roughly with the number of articles
-rather than with its square. The graph rebuilds byte for byte from its inputs, human verdicts are
+BlindGate needs only news text, a written rubric and an LLM judge, and nothing in it is specific
+to protests; it spent about 14 judged claims per link retained. The graph rebuilds byte for byte from its inputs, human verdicts are
 stored as annotations that outrank AI judgements, and the pipeline is covered by 345 automated
 tests. Because causal claims about protests are politically sensitive, the graph never states a
 link without its quotation and source, and the candidates it declined are kept on record.
@@ -473,10 +515,11 @@ stops at three levels, and recall is bounded by what the corpus reports. A campa
 part-of relation, and human review targeted at implied links, are the natural next steps.
 
 \section{Conclusion}
-Causal questions about event data require text, not metadata. LLM agents can build a large,
-evidence-grounded causal graph without a person in the loop, provided that every link carries a
-verified quotation, every acceptance passes a blind, decoy-calibrated re-examination, and
-structural repairs defer to recorded human verdicts. On this corpus such links were 90\% correct,
+Causal questions about event data require text, not metadata. BlindGate builds a large,
+evidence-grounded causal graph without a person in the construction loop, because every link
+carries a verified quotation, every acceptance passes a blind, decoy-calibrated re-examination, and
+structural repairs defer to recorded human verdicts; it cut human verdicts per published link about
+seventeen-fold. On this corpus such links were 90\% correct,
 and every link stated in explicit causal wording was correct. The remaining errors lie in implied
 links, where a further AI judge does not help and a human reviewer still does. The code, rubrics and
 graph are available at \url{https://github.com/AdityaMohanShenoy/gdelt-knowledge-graph}.
