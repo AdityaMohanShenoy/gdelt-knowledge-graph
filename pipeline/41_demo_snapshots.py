@@ -7,6 +7,7 @@ hidden) and writes frontend/demo-featured.json. The page shows these only when a
 fails. Rerun after every graph publish; a test checks the graph version matches.
 """
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -25,6 +26,7 @@ QUESTIONS = [
 
 
 def main() -> None:
+    argparse.ArgumentParser(description=__doc__.splitlines()[0]).parse_args()
     graph = Graph.load(ROOT / "out" / "causal_graph.json", implied=False)
     out = {"graph_version": graph.version, "questions": []}
     for question, direction in QUESTIONS:
