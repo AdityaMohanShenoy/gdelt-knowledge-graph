@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why It Happened — Causal Graph Demo</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='8' cy='16' r='5' fill='%23f2b33d'/%3E%3Ccircle cx='24' cy='16' r='5' fill='%233dd6a3'/%3E%3Cpath d='M13 16h6' stroke='%23e6ecf3' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* Night observatory: one left-aligned column per section, the causal chain is the only loud thing. */
+:root {
+  --ground: #0e1a2b;
+  --deep: #0a1422;
+  --panel: #13233a;
+  --line: #24374f;
+  --text: #e6ecf3;
+  --muted: #93a4ba;
+  --amber: #f2b33d;
+  --green: #3dd6a3;
+  --coral: #ff7a6b;
+  --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body: "Public Sans", "Helvetica Neue", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--ground); color: var(--text); font: 400 19px/1.6 var(--body); }
+a { color: var(--amber); }
+:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
+
+.wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding-inline: max(24px, env(safe-area-inset-left)); }
+section { min-height: 100vh; padding-block: 12vh 10vh; display: flex; flex-direction: column; justify-content: center; }
+section:nth-of-type(even) { background: var(--deep); }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h1 { font-size: clamp(42px, 5.6vw, 84px); line-height: 1.02; font-weight: 800; max-width: 17ch; }
+h2 { font-size: clamp(34px, 4.4vw, 60px); line-height: 1.08; max-width: 20ch; }
+h3 { font-size: 22px; }
+.lede { color: var(--muted); font-size: clamp(19px, 1.6vw, 23px); max-width: 60ch; margin: 22px 0 0; }
+.source { color: var(--muted); font-size: 14px; margin-top: 28px; }
+.num { font-family: var(--display); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+
+/* Hero */
+.counters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 32px; margin-top: 56px; }
+.counter .num { font-size: clamp(44px, 5vw, 76px); color: var(--amber); }
+.counter.good .num { color: var(--green); }
+.counter p { margin: 10px 0 0; color: var(--muted); font-size: 17px; max-width: 22ch; }
+
+/* Problem */
+.duel { display: grid; gap: 22px; margin-top: 56px; max-width: 760px; }
+.bar-row { display: grid; grid-template-columns: 240px 1fr 80px; align-items: center; gap: 18px; }
+.bar-row span:first-child { color: var(--muted); font-size: 17px; }
+.track { height: 34px; background: var(--panel); border-radius: 6px; overflow: hidden; }
+.fill { height: 100%; background: var(--muted); border-radius: 6px; transform: scaleX(0); transform-origin: left; transition: transform 1.2s cubic-bezier(.2,.7,.2,1); }
+.fill.amber { background: var(--amber); }
+.bar-row .num { font-size: 30px; text-align: right; }
+.verdict { margin-top: 40px; font-family: var(--display); font-size: clamp(24px, 2.4vw, 32px); max-width: 28ch; }
+
+/* Funnel */
+.funnel { list-style: none; padding: 0; margin: 56px 0 0; display: grid; gap: 12px; }
+.funnel li { display: grid; grid-template-columns: 200px 1fr; align-items: center; gap: 24px; }
+.funnel .num { font-size: clamp(34px, 3.6vw, 48px); color: var(--text); text-align: right; }
+.funnel .step { background: var(--panel); padding: 14px 20px; border-radius: 8px; }
+.funnel li:last-child .num { color: var(--amber); }
+.funnel li:last-child .step { background: rgba(242, 179, 61, 0.14); }
+.funnel .step b { display: block; font-weight: 600; }
+.funnel .step small { color: var(--muted); font-size: 16px; }
+
+/* Graph mix */
+.mix { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 48px; margin-top: 56px; }
+.mix h3 { margin-bottom: 18px; }
+.hbar { display: grid; grid-template-columns: 150px 1fr 60px; gap: 12px; align-items: center; margin-bottom: 10px; font-size: 16px; }
+.hbar .track { height: 18px; }
+.hbar .fill { background: var(--amber); }
+.hbar .count { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.hbar.ok .fill { background: var(--green); }
+
+/* Trust */
+.trust-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 56px; margin-top: 56px; align-items: start; }
+.big-score .num { font-size: clamp(96px, 11vw, 156px); color: var(--green); }
+.big-score p { color: var(--muted); margin: 12px 0 0; max-width: 34ch; }
+.splits { display: grid; gap: 18px; }
+.split { background: var(--panel); border-radius: 10px; padding: 20px 24px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 16px; }
+.split .num { font-size: 40px; grid-row: span 2; }
+.split.good .num { color: var(--green); }
+.split.warn .num { color: var(--coral); }
+.split b { font-weight: 600; }
+.split small { color: var(--muted); font-size: 16px; }
+.labour { margin-top: 64px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 18px 28px; }
+.labour .num { font-size: clamp(48px, 5vw, 72px); }
+.labour .from { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 3px; }
+.labour .to { color: var(--amber); }
+.labour p { margin: 0; color: var(--muted); max-width: 36ch; }
+
+
+/* Ask */
+#ask { justify-content: flex-start; }
+.asker { margin-top: 36px; display: grid; gap: 18px; }
+.dir { display: inline-flex; background: var(--panel); border-radius: 999px; padding: 4px; width: fit-content; }
+.dir button { font: 600 16px var(--body); color: var(--muted); background: none; border: 0; padding: 10px 18px; border-radius: 999px; cursor: pointer; }
+.dir button[aria-pressed="true"] { background: var(--amber); color: var(--deep); }
+.qrow { display: flex; gap: 12px; flex-wrap: wrap; }
+.qrow input { flex: 1 1 420px; min-width: 0; font: 400 21px var(--body); color: var(--text); background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 16px 20px; }
+.qrow input:focus { border-color: var(--amber); outline: none; }
+.qrow button { font: 700 19px var(--display); background: var(--amber); color: var(--deep); border: 0; border-radius: 12px; padding: 0 30px; cursor: pointer; }
+.chips { display: flex; flex-wrap: wrap; gap: 10px; }
+.chips button { font: 400 16px var(--body); color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 9px 16px; cursor: pointer; text-align: left; }
+.chips button:hover { border-color: var(--amber); }
+.opt { color: var(--muted); font-size: 16px; display: flex; gap: 10px; align-items: center; }
+.opt input { accent-color: var(--amber); width: 18px; height: 18px; }
+#answer { margin-top: 40px; }
+.status { color: var(--muted); font-size: 17px; margin: 0 0 20px; }
+.status b { color: var(--text); }
+.saved { display: inline-block; font-size: 14px; color: var(--deep); background: var(--muted); border-radius: 6px; padding: 2px 8px; margin-left: 8px; }
+.chain { display: flex; align-items: stretch; margin-bottom: 28px; overflow-x: auto; }
+.node { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; flex: 1 1 0; min-width: 120px; }
+.node b { display: block; font-weight: 600; font-size: 17px; line-height: 1.3; }
+.node small { color: var(--muted); font-size: 14px; }
+.node.target { border-color: var(--green); }
+.link { flex: 1.3 1 0; min-width: 150px; padding: 6px 14px; display: flex; flex-direction: column; justify-content: center; }
+.link .rel { font: 700 15px var(--display); color: var(--amber); }
+.link .rel::after { content: ""; display: block; height: 2px; background: var(--amber); margin: 6px 0 8px; box-shadow: 0 0 12px rgba(242,179,61,.6); }
+.link q { font-size: 14px; line-height: 1.4; color: var(--text); }
+.link .meta { font-size: 13px; color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; }
+.badge { white-space: nowrap; display: inline-block; margin-bottom: 4px; font-size: 12px; border-radius: 4px; padding: 1px 6px; margin-right: 6px; border: 1px solid currentColor; }
+.badge.person { color: var(--green); }
+.badge.implied { color: var(--coral); }
+.reveal { opacity: 0; animation: show .5s ease forwards; }
+@keyframes show { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; animation: none; } }
+.choices { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+#net[hidden] { display: none; }
+#net { width: 100%; height: 440px; background: var(--deep); border-radius: 14px; margin-top: 8px; }
+#net text { fill: var(--muted); font: 12px var(--body); }
+@media (max-width: 760px) { .chain { flex-direction: column; } .node, .link { min-width: 0; } }
+
+@media (max-width: 760px) {
+  body { font-size: 17px; }
+  .bar-row { grid-template-columns: 1fr 64px; }
+  .bar-row span:first-child { grid-column: 1 / -1; }
+  .bar-row .track { grid-column: 1; }
+  .funnel li { grid-template-columns: 1fr; gap: 6px; }
+  .funnel .num { text-align: left; }
+  .trust-grid { grid-template-columns: 1fr; }
+  .counters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hbar { grid-template-columns: 110px 1fr 48px; }
+}
+@media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
+</style>
+</head>
+<body>
+
+<section id="hero">
+  <div class="wrap">
+    <h1>News says why. Databases only say what.</h1>
+    <p class="lede">GDELT logs millions of events from the world's news, but never the reason they happened.
+      This project reads the articles behind 2024's Indian protests and turns the reasons they state
+      into a causal graph you can question, with every link quoted from its source.</p>
+    <div class="counters">
+      <div class="counter"><div class="num" data-count="2000">2,000</div><p>news articles read</p></div>
+      <div class="counter"><div class="num" data-stat="links">1,416</div><p>cause-and-effect links, each with its quote</p></div>
+      <div class="counter"><div class="num" data-stat="protests">358</div><p>protests with an explained cause</p></div>
+      <div class="counter good"><div class="num">90%</div><p>of links correct in a random human audit</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="problem">
+  <div class="wrap">
+    <h2>Event codes alone cannot tell a cause from a coincidence.</h2>
+    <p class="lede">We first tried the obvious shortcut: score possible causes from GDELT's own fields
+      (who, where, which event code, how many days apart). Then we fed it pairs of events that had
+      nothing to do with each other.</p>
+    <div class="duel">
+      <div class="bar-row"><span>Candidates around real protests</span><div class="track"><div class="fill" data-width="3.8"></div></div><span class="num">3.8%</span></div>
+      <div class="bar-row"><span>Shuffled, unrelated candidates</span><div class="track"><div class="fill amber" data-width="4.0"></div></div><span class="num">4.0%</span></div>
+    </div>
+    <p class="verdict">It flagged random pairs as often as real ones, and 0 of the 322 causes it
+      proposed was a cause the articles actually support.</p>
+    <p class="source">Share of candidates given the scorer's "pattern" grade. Sources: docs/measurements/negative_controls.md (the two bars) and docs/measurements/branching.md (0 of 322).</p>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>So we read the articles, and kept only what they say.</h2>
+    <p class="lede">Every field is copied word for word from the text. A link is kept only when the article
+      states it, and a second, independent check must agree before it enters the graph.</p>
+    <ol class="funnel">
+      <li><span class="num">2,000</span><div class="step"><b>Articles fetched from GDELT links</b><small>Indian news, 2024</small></div></li>
+      <li><span class="num">915</span><div class="step"><b>Kept as protest stories</b><small>the rest are off-topic or not about a protest</small></div></li>
+      <li><span class="num">7,083</span><div class="step"><b>Events pulled out, word for word</b><small>who did what, where and when</small></div></li>
+      <li><span class="num">6,152</span><div class="step"><b>Distinct events after merging repeats</b><small>plus 810 standing grievances, such as unpaid dues</small></div></li>
+      <li><span class="num">20,129</span><div class="step"><b>Possible causes checked against the text</b><small>each accepted only with an exact quote</small></div></li>
+      <li><span class="num" data-stat="links">1,416</span><div class="step"><b>Causal links in the final graph</b><small>no loops, rebuilt identically every time</small></div></li>
+    </ol>
+  </div>
+</section>
+
+<section id="graph">
+  <div class="wrap">
+    <h2>What the graph holds.</h2>
+    <p class="lede">Most protests are explained by the grievance behind them; others by a spark, a call to
+      march, or an earlier stage of the same dispute.</p>
+    <div class="mix">
+      <div><h3>Kinds of link</h3><div id="mix-relation"></div></div>
+      <div><h3>How far back</h3><div id="mix-depth"></div>
+        <h3 style="margin-top:32px">Evidence</h3><div id="mix-evidence"></div></div>
+    </div>
+    <p class="source">Counted live from the published graph.</p>
+  </div>
+</section>
+
+<section id="trust">
+  <div class="wrap">
+    <h2>Can you trust it? We checked by hand.</h2>
+    <p class="lede">A person reviewed 100 links picked at random from the ones nobody had checked.</p>
+    <div class="trust-grid">
+      <div class="big-score"><div class="num">89 / 99</div>
+        <p>judged correct, one left undecided: 90%, with a 95% range of 82–94%.</p></div>
+      <div class="splits">
+        <div class="split good"><b>Stated in plain causal words</b><span class="num">69 / 69</span><small>"protesting against", "in response to"</small></div>
+        <div class="split warn"><b>Only implied by the text</b><span class="num">20 / 30</span><small>so the query box shows them only after a person reviews them; 284 of these had only a quick review</small></div>
+      </div>
+    </div>
+    <div class="labour">
+      <span class="num from">1.18</span><span class="num to">0.07</span>
+      <p>human checks per published link, before and after the algorithm: about 17 times less work.</p>
+    </div>
+    <p class="source">Sources: docs/measurements/scale_2000.md (audit) and paper/iccids2027.tex, human labour section (checks per link).</p>
+  </div>
+</section>
+
+<section id="ask">
+  <div class="wrap">
+    <h2>Ask it why.</h2>
+    <p class="lede">Type a question about a 2024 protest in India. The answer is built only from links in
+      the graph, and every step shows the sentence that supports it.</p>
+    <div class="asker">
+      <div class="dir" role="group" aria-label="Question type">
+        <button type="button" data-dir="causes" aria-pressed="true">What caused it</button>
+        <button type="button" data-dir="effects" aria-pressed="false">What it led to</button>
+      </div>
+      <form class="qrow" id="qform">
+        <label for="q" class="sr" style="position:absolute;left:-9999px">Your question</label>
+        <input id="q" autocomplete="off" placeholder="Why were farmers protesting at the Punjab-Haryana border?">
+        <button type="submit">Ask</button>
+      </form>
+      <div class="chips" id="chips" aria-label="Featured questions">
+        <button type="button" data-q="Why were farmers protesting at the Punjab-Haryana border in February 2024?" data-dir="causes">Why were farmers protesting at the Punjab-Haryana border in February 2024?</button>
+        <button type="button" data-q="Why did doctors in Kolkata go on hunger strike?" data-dir="causes">Why did doctors in Kolkata go on hunger strike?</button>
+        <button type="button" data-q="Why did Atishi go on a hunger strike over water?" data-dir="causes">Why did Atishi go on a hunger strike over water?</button>
+        <button type="button" data-q="What did the killing of the trainee doctor in Kolkata lead to?" data-dir="effects">What did the killing of the trainee doctor in Kolkata lead to?</button>
+      </div>
+      <label class="opt"><input type="checkbox" id="implied"> Include links that are only implied and not yet checked by a person<span id="hidden-note"></span></label>
+    </div>
+    <div id="answer" aria-live="polite"></div>
+    <svg id="net" role="img" aria-label="Network of the answer's causes" hidden></svg>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js" defer></script>
+<script>
+const fmt = n => Number(n).toLocaleString("en-US");
+const LABEL = { MOTIVATES: "Motivated by", TRIGGERS: "Set off by", ESCALATES: "Earlier stage",
+                PROMPTS_RESPONSE: "Answered", MOBILIZES: "Organised by" };
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function bars(el, entries, cls = "") {
+  const max = Math.max(...entries.map(([, v]) => v), 1);
+  el.innerHTML = entries.map(([k, v]) =>
+    `<div class="hbar ${cls}"><span>${esc(k)}</span><div class="track"><div class="fill" data-width="${(100 * v / max).toFixed(1)}"></div></div><span class="count">${fmt(v)}</span></div>`
+  ).join("");
+}
+
+function countUp(el, target) {
+  if (reduce) { el.textContent = fmt(target); return; }
+  const t0 = performance.now(), dur = 1400;
+  const step = t => {
+    const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmt(Math.round(target * e));
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+const io = new IntersectionObserver(entries => entries.forEach(entry => {
+  if (!entry.isIntersecting) return;
+  entry.target.querySelectorAll(".fill[data-width]").forEach(f => {
+    const w = parseFloat(f.dataset.width);
+    f.style.transform = `scaleX(${(f.closest(".duel") ? w * 20 : w) / 100})`;  /* problem bars: 5% = full track */
+  });
+  entry.target.querySelectorAll("[data-count]").forEach(n => countUp(n, +n.dataset.count));
+  io.unobserve(entry.target);
+}), { threshold: 0.35 });
+
+async function loadStats() {
+  try {
+    const all = await (await fetch("/api/explain/stats?implied=true")).json();
+    document.querySelectorAll('[data-stat]').forEach(n => { n.dataset.count = all[n.dataset.stat]; n.textContent = fmt(all[n.dataset.stat]); });
+    const rel = Object.entries(all.by_relation).sort((a, b) => b[1] - a[1]).map(([k, v]) => [LABEL[k] || k, v]);
+    bars(document.getElementById("mix-relation"), rel);
+    bars(document.getElementById("mix-depth"), Object.entries(all.by_depth).map(([d, v]) => [d === "1" ? "Direct cause" : `${d} steps back`, v]));
+    const def = await (await fetch("/api/explain/stats")).json();
+    if (def.hidden_implied) document.getElementById("hidden-note").textContent = ` (${fmt(def.hidden_implied)} hidden now)`;
+    bars(document.getElementById("mix-evidence"), [["Stated", all.by_evidence.explicit || 0], ["Implied", all.by_evidence.implicit || 0]], "ok");
+  } catch (e) { /* counters keep their printed values */ }
+  document.querySelectorAll("section").forEach(s => io.observe(s));
+}
+loadStats();
+
+/* ---------- Ask ---------- */
+const VERB = { TRIGGERS: "set off", MOTIVATES: "motivated", MOBILIZES: "organised",
+               ESCALATES: "escalated into", PROMPTS_RESPONSE: "prompted" };
+const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const host = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
+const webUrl = u => { try { const p = new URL(u).protocol; return p === "https:" || p === "http:"; } catch { return false; } };
+let direction = "causes", featured = [];
+const answerEl = document.getElementById("answer"), net = document.getElementById("net");
+
+function nodeCard(n, isTarget, delay) {
+  return `<div class="node reveal${isTarget ? " target" : ""}" style="animation-delay:${delay}ms">
+    <b>${esc(n.label)}</b><small>${esc(n.date ? n.date.slice(0, 10) : n.kind === "condition" ? "ongoing condition" : "")}</small></div>`;
+}
+function linkCard(e, delay) {
+  const q = e.evidence && e.evidence[0] ? e.evidence[0].text : "";
+  const src = e.source_urls && webUrl(e.source_urls[0]) ? e.source_urls[0] : null;
+  return `<div class="link reveal" style="animation-delay:${delay}ms">
+    <span class="rel">${esc(VERB[e.relation] || e.relation)}</span>
+    <q>${esc(q)}</q>
+    <span class="meta">${e.human_verified ? '<span class="badge person">Checked by a person</span>' : ""}${e.evidence_quality === "implicit" ? '<span class="badge implied">Implied</span>' : ""}${src ? `<a href="${esc(src)}" target="_blank" rel="noopener">${esc(host(src))}</a>` : ""}</span></div>`;
+}
+
+function render(d, q, saved, direction) {
+  net.toggleAttribute("hidden", true);
+  if (d.status === 'clarify') {
+    answerEl.innerHTML = `<p class="status">That matches several stories. Which one do you mean?</p><div class="choices chips">${
+      d.options.map(o => `<button type="button" data-cluster="${esc(o.cluster)}">${esc(o.label)}${o.date_range ? ` (${esc(o.date_range[0])} to ${esc(o.date_range[1])})` : ""}</button>`).join("")}</div>`;
+    answerEl.querySelectorAll("[data-cluster]").forEach(b => b.addEventListener("click", () => ask(q, b.dataset.cluster)));
+    return;
+  }
+  if (d.status === 'no_match' || !d.paths || !d.paths.length) {
+    answerEl.innerHTML = `<p class="status">The graph has no protest that matches <b>${esc(q)}</b>. Try naming the place, the group or the month, or pick one of the questions above.</p>`;
+    return;
+  }
+  const shown = d.paths.slice(0, 3), endOf = p => direction === "causes" ? p.nodes[p.nodes.length - 1] : p.nodes[0];
+  const target = shown.every(p => endOf(p).id === endOf(shown[0]).id) ? endOf(shown[0]) : null;
+  const cov = d.coverage || {};
+  let html = `<p class="status">${direction === "causes" ? "Causes of" : "What followed"} <b>${esc(target ? target.label : "the events that match your question")}</b>: the top ${Math.min(3, d.paths.length)} chains, drawn from a story of ${fmt(cov.nodes_in_subgraph || 0)} events and ${fmt(cov.edges_in_subgraph || 0)} links${saved ? '<span class="saved">saved answer</span>' : ""}.</p>`;
+  d.paths.slice(0, 3).forEach((p, i) => {
+    let t = i * 250, row = "";
+    p.nodes.forEach((n, j) => {
+      row += nodeCard(n, j === p.nodes.length - 1 && direction === "causes" || j === 0 && direction === "effects", t); t += 220;
+      if (p.edges[j]) { row += linkCard(p.edges[j], t); t += 220; }
+    });
+    html += `<div class="chain">${row}</div>`;
+  });
+  if (cov.not_searched && cov.not_searched.length) html += `<p class="status">${cov.not_searched.length === 1 ? "1 earlier event in this story was" : `${cov.not_searched.length} earlier events in this story were`} never searched for their own causes.</p>`;
+  answerEl.innerHTML = html;
+  drawNet(d.paths.slice(0, 5));
+}
+
+function drawNet(paths) {
+  if (!window.d3) return;
+  const nodes = new Map(), links = new Map();
+  paths.forEach(p => { p.nodes.forEach(n => nodes.set(n.id, { id: n.id, label: n.label })); p.edges.forEach(e => links.set(e.id, { source: e.source, target: e.target, rel: e.relation })); });
+  const data = { nodes: [...nodes.values()], links: [...links.values()].filter(l => nodes.has(l.source) && nodes.has(l.target)) };
+  net.toggleAttribute("hidden", false);
+  const svg = d3.select(net), w = net.clientWidth, h = 440;
+  svg.selectAll("*").remove();
+  svg.append("defs").append("marker").attr("id", "arr").attr("viewBox", "0 0 10 10").attr("refX", 18).attr("refY", 5)
+     .attr("markerWidth", 7).attr("markerHeight", 7).attr("orient", "auto").append("path").attr("d", "M0,0L10,5L0,10z").attr("fill", "#f2b33d");
+  const link = svg.append("g").selectAll("line").data(data.links).join("line").attr("stroke", "#f2b33d").attr("stroke-opacity", .55).attr("stroke-width", 1.6).attr("marker-end", "url(#arr)");
+  const node = svg.append("g").selectAll("g").data(data.nodes).join("g");
+  node.append("circle").attr("r", 8).attr("fill", "#13233a").attr("stroke", "#3dd6a3").attr("stroke-width", 2);
+  node.append("text").attr("x", 12).attr("y", 4).text(n => n.label.length > 34 ? n.label.slice(0, 32) + "…" : n.label);
+  const sim = d3.forceSimulation(data.nodes)
+    .force("link", d3.forceLink(data.links).id(n => n.id).distance(150))
+    .force("charge", d3.forceManyBody().strength(-700))
+    .force("center", d3.forceCenter(w / 2, h / 2))
+    .force("collide", d3.forceCollide(60));
+  if (reduce) { sim.stop(); for (let i = 0; i < 200; i++) sim.tick(); }
+  const tick = () => {
+    data.nodes.forEach(n => { n.x = Math.max(16, Math.min(w - 230, n.x)); n.y = Math.max(16, Math.min(h - 16, n.y)); });
+    link.attr("x1", l => l.source.x).attr("y1", l => l.source.y).attr("x2", l => l.target.x).attr("y2", l => l.target.y);
+    node.attr("transform", n => `translate(${n.x},${n.y})`);
+  };
+  sim.on("tick", tick); tick();
+}
+
+let reqId = 0;
+async function ask(q, cluster) {
+  q = q.trim(); if (!q) return;
+  const mine = ++reqId, dir = direction;
+  answerEl.innerHTML = `<p class="status">Searching the graph…</p>`;
+  const implied = document.getElementById("implied").checked;
+  const qs = new URLSearchParams({ q }); if (cluster != null) qs.set("cluster", cluster);
+  const url = `/api/${dir === "causes" ? "explain" : "consequences"}?${qs}${implied ? "&implied=true" : ""}`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error(res.status);
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    if (mine === reqId) render(d, q, false, dir);
+  } catch (err) {
+    if (mine !== reqId) return;
+    if (!featured.length) await loadFeatured();
+    const snap = featured.find(f => f.q === q && f.direction === dir && cluster == null && !implied);
+    if (snap) render(snap.answer, q, true, dir);
+    else answerEl.innerHTML = `<p class="status">The graph service did not answer. Check the connection and ask again, or pick a featured question, which works offline.</p>`;
+  }
+}
+
+document.querySelectorAll(".dir button").forEach(b => b.addEventListener("click", () => {
+  direction = b.dataset.dir;
+  document.querySelectorAll(".dir button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  document.getElementById("q").placeholder = direction === "causes" ? "Why were farmers protesting at the Punjab-Haryana border?" : "What did the killing of the trainee doctor in Kolkata lead to?";
+}));
+document.getElementById("qform").addEventListener("submit", e => { e.preventDefault(); ask(document.getElementById("q").value); });
+
+/* Chips live in the markup; their saved answers load in the background and are only used if a live call fails. */
+const loadFeatured = () => fetch("/static/demo-featured.json").then(r => r.json()).then(d => { featured = d.questions; }).catch(() => {});
+loadFeatured();
+document.querySelectorAll("#chips button").forEach(b => b.addEventListener("click", () => {
+  document.querySelector(`.dir button[data-dir="${b.dataset.dir}"]`).click();
+  document.getElementById("q").value = b.dataset.q;
+  ask(b.dataset.q);
+}));
+
+/* Presenter keys: 1-6 jump to sections, / focuses the question. */
+const ORDER = ["hero", "problem", "how", "graph", "trust", "ask"];
+document.addEventListener("keydown", e => {
+  if (e.target.closest("input, textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "/") { e.preventDefault(); document.getElementById("ask").scrollIntoView(); document.getElementById("q").focus({ preventScroll: true }); }
+  else if ("123456".includes(e.key) && e.key.length === 1) document.getElementById(ORDER[+e.key - 1]).scrollIntoView();
+});
+</script>
+</body>
+</html>

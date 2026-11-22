@@ -46,6 +46,25 @@ def without_unchecked_implied(data: dict) -> dict:
     return {**data, "edges": keep, "hidden_implied": len(data["edges"]) - len(keep)}
 
 
+def graph_stats(graph: "Graph") -> dict:
+    """Live counts for the demo page: links, nodes, protests and the link mix."""
+    edges = list(graph.edges.values())
+
+    def tally(values) -> dict:
+        return dict(sorted(Counter(values).items()))
+
+    return {
+        "version": graph.version,
+        "links": len(edges),
+        "nodes": len(graph.nodes),
+        "protests": len(graph.seeds),
+        "person_checked": sum(bool(e.get("human_verified")) for e in edges),
+        "by_relation": tally(e["relation"] for e in edges),
+        "by_depth": tally(str(e["expansion_level"]) for e in edges),
+        "by_evidence": tally(e["evidence_quality"] for e in edges),
+    }
+
+
 class Graph:
     def __init__(self, data: dict):
         self.data = data

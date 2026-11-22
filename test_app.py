@@ -71,3 +71,13 @@ assert asyncio.run(app.causal_matrix(country="ZZ"))["country"] == "IN"
 assert asyncio.run(app.causal_seeds(country="'; DROP TABLE events; --"))["country"] == "IN"
 
 print("ok")
+
+# ── Demo page: live stats match the published graph; the page is served ─────
+_stats = asyncio.run(app.explain_stats())
+_published = json.load(open("out/causal_graph.json"))
+assert _stats["links"] + _stats["hidden_implied"] == len(_published["edges"]), _stats
+assert _stats["by_relation"] and _stats["protests"] > 0, _stats
+_with = asyncio.run(app.explain_stats(implied=True))
+assert _with["links"] == len(_published["edges"]) and _with["hidden_implied"] == 0, _with
+assert str(asyncio.run(app.demo()).path).endswith("demo.html")
+print("demo ok")
