@@ -247,7 +247,12 @@ h3 { font-size: 22px; }
         <input id="q" autocomplete="off" placeholder="Why were farmers protesting at the Punjab-Haryana border?">
         <button type="submit">Ask</button>
       </form>
-      <div class="chips" id="chips" aria-label="Featured questions"></div>
+      <div class="chips" id="chips" aria-label="Featured questions">
+        <button type="button" data-q="Why were farmers protesting at the Punjab-Haryana border in February 2024?" data-dir="causes">Why were farmers protesting at the Punjab-Haryana border in February 2024?</button>
+        <button type="button" data-q="Why did doctors in Kolkata go on hunger strike?" data-dir="causes">Why did doctors in Kolkata go on hunger strike?</button>
+        <button type="button" data-q="Why did Atishi go on a hunger strike over water?" data-dir="causes">Why did Atishi go on a hunger strike over water?</button>
+        <button type="button" data-q="What did the killing of the trainee doctor in Kolkata lead to?" data-dir="effects">What did the killing of the trainee doctor in Kolkata lead to?</button>
+      </div>
       <label class="opt"><input type="checkbox" id="implied"> Include links that are only implied and not yet checked by a person<span id="hidden-note"></span></label>
     </div>
     <div id="answer" aria-live="polite"></div>
@@ -393,13 +398,14 @@ async function ask(q, cluster) {
   const qs = new URLSearchParams({ q }); if (cluster != null) qs.set("cluster", cluster);
   const url = `/api/${dir === "causes" ? "explain" : "consequences"}?${qs}${implied ? "&implied=true" : ""}`;
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
     if (!res.ok) throw new Error(res.status);
     const d = await res.json();
     if (d.error) throw new Error(d.error);
     if (mine === reqId) render(d, q, false, dir);
   } catch (err) {
     if (mine !== reqId) return;
+    if (!featured.length) await loadFeatured();
     const snap = featured.find(f => f.q === q && f.direction === dir && cluster == null && !implied);
     if (snap) render(snap.answer, q, true, dir);
     else answerEl.innerHTML = `<p class="status">The graph service did not answer. Check the connection and ask again, or pick a featured question, which works offline.</p>`;
@@ -413,16 +419,14 @@ document.querySelectorAll(".dir button").forEach(b => b.addEventListener("click"
 }));
 document.getElementById("qform").addEventListener("submit", e => { e.preventDefault(); ask(document.getElementById("q").value); });
 
-fetch("/static/demo-featured.json").then(r => r.json()).then(d => {
-  featured = d.questions;
-  document.getElementById("chips").innerHTML = featured.map((f, i) => `<button type="button" data-i="${i}">${esc(f.q)}</button>`).join("");
-  document.querySelectorAll("#chips button").forEach(b => b.addEventListener("click", () => {
-    const f = featured[+b.dataset.i];
-    document.querySelector(`.dir button[data-dir="${f.direction}"]`).click();
-    document.getElementById("q").value = f.q;
-    ask(f.q);
-  }));
-}).catch(() => {});
+/* Chips live in the markup; their saved answers load in the background and are only used if a live call fails. */
+const loadFeatured = () => fetch("/static/demo-featured.json").then(r => r.json()).then(d => { featured = d.questions; }).catch(() => {});
+loadFeatured();
+document.querySelectorAll("#chips button").forEach(b => b.addEventListener("click", () => {
+  document.querySelector(`.dir button[data-dir="${b.dataset.dir}"]`).click();
+  document.getElementById("q").value = b.dataset.q;
+  ask(b.dataset.q);
+}));
 
 /* Presenter keys: 1-6 jump to sections, / focuses the question. */
 const ORDER = ["hero", "problem", "how", "graph", "trust", "ask"];

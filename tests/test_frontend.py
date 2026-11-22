@@ -82,3 +82,14 @@ def test_demo_review_fixes():
     assert "if (d.error) throw" in source and "reqId" in source
     # only http(s) source links are rendered as links
     assert 'p === "https:" || p === "http:"' in source and "webUrl(e.source_urls[0])" in source
+
+
+def test_demo_survives_a_stalled_network():
+    import json
+    source = DEMO_PATH.read_text()
+    # a hung request gives up and falls back instead of "Searching…" forever
+    assert "AbortSignal.timeout(" in source
+    # chips are in the markup, so they show even if the saved answers never load
+    featured = json.loads((ROOT / "frontend" / "demo-featured.json").read_text())["questions"]
+    for f in featured:
+        assert f'data-q="{f["q"]}" data-dir="{f["direction"]}"' in source, f["q"]
