@@ -131,6 +131,7 @@ h3 { font-size: 22px; }
 @keyframes show { to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; animation: none; } }
 .choices { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+#net[hidden] { display: none; }
 #net { width: 100%; height: 440px; background: var(--deep); border-radius: 14px; margin-top: 8px; }
 #net text { fill: var(--muted); font: 12px var(--body); }
 @media (max-width: 760px) { .chain { flex-direction: column; } .node, .link { min-width: 0; } }
@@ -333,7 +334,7 @@ function linkCard(e, delay) {
 }
 
 function render(d, q, saved, direction) {
-  net.hidden = true;
+  net.toggleAttribute("hidden", true);
   if (d.status === 'clarify') {
     answerEl.innerHTML = `<p class="status">That matches several stories. Which one do you mean?</p><div class="choices chips">${
       d.options.map(o => `<button type="button" data-cluster="${esc(o.cluster)}">${esc(o.label)}${o.date_range ? ` (${esc(o.date_range[0])} to ${esc(o.date_range[1])})` : ""}</button>`).join("")}</div>`;
@@ -366,7 +367,7 @@ function drawNet(paths) {
   const nodes = new Map(), links = new Map();
   paths.forEach(p => { p.nodes.forEach(n => nodes.set(n.id, { id: n.id, label: n.label })); p.edges.forEach(e => links.set(e.id, { source: e.source, target: e.target, rel: e.relation })); });
   const data = { nodes: [...nodes.values()], links: [...links.values()].filter(l => nodes.has(l.source) && nodes.has(l.target)) };
-  net.hidden = false;
+  net.toggleAttribute("hidden", false);
   const svg = d3.select(net), w = net.clientWidth, h = 440;
   svg.selectAll("*").remove();
   svg.append("defs").append("marker").attr("id", "arr").attr("viewBox", "0 0 10 10").attr("refX", 18).attr("refY", 5)

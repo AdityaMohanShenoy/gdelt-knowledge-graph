@@ -93,3 +93,11 @@ def test_demo_survives_a_stalled_network():
     featured = json.loads((ROOT / "frontend" / "demo-featured.json").read_text())["questions"]
     for f in featured:
         assert f'data-q="{f["q"]}" data-dir="{f["direction"]}"' in source, f["q"]
+
+
+def test_demo_network_panel_really_hides():
+    # `hidden` is an HTML property; on an <svg> assigning it is a no-op, so the panel
+    # kept showing the previous answer's network. Use the attribute plus a CSS rule.
+    source = DEMO_PATH.read_text()
+    assert "net.hidden =" not in source
+    assert "#net[hidden] { display: none; }" in source
