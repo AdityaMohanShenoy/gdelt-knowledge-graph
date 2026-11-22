@@ -112,3 +112,12 @@ def test_demo_browse_every_protest_and_follow_any_event():
     assert 'data-node="${esc(n.id)}"' in source and 'qs.set("node"' in source
     # an event with nothing recorded before/after it offers the other direction
     assert "See what it led to" in source and "See what caused it" in source
+
+
+def test_demo_back_retraces_the_walk():
+    source = DEMO_PATH.read_text()
+    # every question asked (not a step back) is remembered, with its direction
+    assert 'id="back"' in source and "trail.push({ q, cluster, node, dir })" in source
+    # Back re-asks the previous step in its own direction without re-recording it
+    assert "if (prev.dir !== direction) setDirection(prev.dir);" in source
+    assert "ask(prev.q, prev.cluster, prev.node, true)" in source

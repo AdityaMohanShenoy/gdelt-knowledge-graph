@@ -121,6 +121,9 @@ h3 { font-size: 22px; }
 .node.target { border-color: var(--green); }
 button.node { font: inherit; color: inherit; text-align: left; cursor: pointer; }
 button.node:hover { border-color: var(--amber); }
+#back { font: 600 16px var(--body); color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px; cursor: pointer; margin: 28px 0 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#back:hover { border-color: var(--amber); }
+#back[hidden] { display: none; }
 .browse summary { cursor: pointer; color: var(--amber); font-weight: 600; font-size: 17px; width: fit-content; }
 .browse[open] summary { margin-bottom: 12px; }
 .browse input { width: 100%; max-width: 520px; font: 400 17px var(--body); color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
@@ -270,6 +273,7 @@ button.node:hover { border-color: var(--amber); }
       </details>
       <label class="opt"><input type="checkbox" id="implied"> Include links that are only implied and not yet checked by a person<span id="hidden-note"></span></label>
     </div>
+    <button type="button" id="back" hidden></button>
     <div id="answer" aria-live="polite"></div>
     <svg id="net" role="img" aria-label="Network of the answer's causes" hidden></svg>
   </div>
@@ -411,9 +415,26 @@ function drawNet(paths) {
 }
 
 let reqId = 0;
-async function ask(q, cluster, node) {
+/* The walk so far, so Back can retrace clicks through a story. */
+const trail = [], backBtn = document.getElementById("back");
+function showBack() {
+  const prev = trail[trail.length - 2];
+  backBtn.hidden = !prev;
+  if (prev) backBtn.textContent = `Back to “${prev.q}”`;
+}
+backBtn.addEventListener("click", () => {
+  trail.pop();
+  const prev = trail[trail.length - 1];
+  if (prev.dir !== direction) setDirection(prev.dir);
+  ask(prev.q, prev.cluster, prev.node, true);
+});
+
+async function ask(q, cluster, node, fromBack) {
   q = q.trim(); if (!q) return;
   const mine = ++reqId, dir = direction;
+  const last = trail[trail.length - 1];
+  if (!fromBack && !(last && last.q === q && last.cluster == cluster && last.node == node && last.dir === dir)) trail.push({ q, cluster, node, dir });
+  showBack();
   answerEl.innerHTML = `<p class="status">Searching the graph…</p>`;
   const implied = document.getElementById("implied").checked;
   const qs = new URLSearchParams(node ? {} : { q }); if (cluster != null) qs.set("cluster", cluster);
