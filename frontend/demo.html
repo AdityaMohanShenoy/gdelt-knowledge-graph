@@ -119,6 +119,15 @@ h3 { font-size: 22px; }
 .node b { display: block; font-weight: 600; font-size: 17px; line-height: 1.3; }
 .node small { color: var(--muted); font-size: 14px; }
 .node.target { border-color: var(--green); }
+button.node { font: inherit; color: inherit; text-align: left; cursor: pointer; }
+button.node:hover { border-color: var(--amber); }
+.browse summary { cursor: pointer; color: var(--amber); font-weight: 600; font-size: 17px; width: fit-content; }
+.browse[open] summary { margin-bottom: 12px; }
+.browse input { width: 100%; max-width: 520px; font: 400 17px var(--body); color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+.browse-list { margin-top: 10px; max-height: 340px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px; padding-right: 6px; }
+.browse-list button { font: 400 16px var(--body); color: var(--text); background: var(--panel); border: 1px solid transparent; border-radius: 8px; padding: 8px 12px; text-align: left; cursor: pointer; }
+.browse-list button:hover { border-color: var(--amber); }
+.browse-list small { display: block; color: var(--muted); font-size: 13px; }
 .link { flex: 1.3 1 0; min-width: 150px; padding: 6px 14px; display: flex; flex-direction: column; justify-content: center; }
 .link .rel { font: 700 15px var(--display); color: var(--amber); }
 .link .rel::after { content: ""; display: block; height: 2px; background: var(--amber); margin: 6px 0 8px; box-shadow: 0 0 12px rgba(242,179,61,.6); }
@@ -254,6 +263,11 @@ h3 { font-size: 22px; }
         <button type="button" data-q="Why did Atishi go on a hunger strike over water?" data-dir="causes">Why did Atishi go on a hunger strike over water?</button>
         <button type="button" data-q="What did the killing of the trainee doctor in Kolkata lead to?" data-dir="effects">What did the killing of the trainee doctor in Kolkata lead to?</button>
       </div>
+      <details class="browse" id="browse">
+        <summary id="browse-title">Browse every protest the graph explains</summary>
+        <input id="browse-filter" type="search" placeholder="Filter by name, place or date" aria-label="Filter the list">
+        <div class="browse-list" id="browse-list"><p class="status">Loading the list…</p></div>
+      </details>
       <label class="opt"><input type="checkbox" id="implied"> Include links that are only implied and not yet checked by a person<span id="hidden-note"></span></label>
     </div>
     <div id="answer" aria-live="polite"></div>
@@ -321,8 +335,8 @@ let direction = "causes", featured = [];
 const answerEl = document.getElementById("answer"), net = document.getElementById("net");
 
 function nodeCard(n, isTarget, delay) {
-  return `<div class="node reveal${isTarget ? " target" : ""}" style="animation-delay:${delay}ms">
-    <b>${esc(n.label)}</b><small>${esc(n.date ? n.date.slice(0, 10) : n.kind === "condition" ? "ongoing condition" : "")}</small></div>`;
+  return `<button type="button" class="node reveal${isTarget ? " target" : ""}" style="animation-delay:${delay}ms" data-node="${esc(n.id)}" data-label="${esc(n.label)}" title="${direction === "causes" ? "Ask what caused this" : "Ask what this led to"}">
+    <b>${esc(n.label)}</b><small>${esc(n.date ? n.date.slice(0, 10) : n.kind === "condition" ? "ongoing condition" : "")}</small></button>`;
 }
 function linkCard(e, delay) {
   const q = e.evidence && e.evidence[0] ? e.evidence[0].text : "";
@@ -333,12 +347,18 @@ function linkCard(e, delay) {
     <span class="meta">${e.human_verified ? '<span class="badge person">Checked by a person</span>' : ""}${e.evidence_quality === "implicit" ? '<span class="badge implied">Implied</span>' : ""}${src ? `<a href="${esc(src)}" target="_blank" rel="noopener">${esc(host(src))}</a>` : ""}</span></div>`;
 }
 
-function render(d, q, saved, direction) {
+function render(d, q, saved, direction, node) {
   net.toggleAttribute("hidden", true);
   if (d.status === 'clarify') {
     answerEl.innerHTML = `<p class="status">That matches several stories. Which one do you mean?</p><div class="choices chips">${
       d.options.map(o => `<button type="button" data-cluster="${esc(o.cluster)}">${esc(o.label)}${o.date_range ? ` (${esc(o.date_range[0])} to ${esc(o.date_range[1])})` : ""}</button>`).join("")}</div>`;
     answerEl.querySelectorAll("[data-cluster]").forEach(b => b.addEventListener("click", () => ask(q, b.dataset.cluster)));
+    return;
+  }
+  if (node && d.status === 'ok' && !(d.paths && d.paths.length)) {
+    const other = direction === "causes" ? "effects" : "causes";
+    answerEl.innerHTML = `<p class="status">Nothing ${direction === "causes" ? "earlier" : "later"} is recorded for <b>${esc(q)}</b>.</p><div class="chips"><button type="button" id="flip">${other === "effects" ? "See what it led to" : "See what caused it"}</button></div>`;
+    document.getElementById("flip").addEventListener("click", () => { setDirection(other); ask(q, null, node); });
     return;
   }
   if (d.status === 'no_match' || !d.paths || !d.paths.length) {
@@ -391,33 +411,79 @@ function drawNet(paths) {
 }
 
 let reqId = 0;
-async function ask(q, cluster) {
+async function ask(q, cluster, node) {
   q = q.trim(); if (!q) return;
   const mine = ++reqId, dir = direction;
   answerEl.innerHTML = `<p class="status">Searching the graph…</p>`;
   const implied = document.getElementById("implied").checked;
-  const qs = new URLSearchParams({ q }); if (cluster != null) qs.set("cluster", cluster);
+  const qs = new URLSearchParams(node ? {} : { q }); if (cluster != null) qs.set("cluster", cluster);
+  if (node) qs.set("node", node);
   const url = `/api/${dir === "causes" ? "explain" : "consequences"}?${qs}${implied ? "&implied=true" : ""}`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
     if (!res.ok) throw new Error(res.status);
     const d = await res.json();
     if (d.error) throw new Error(d.error);
-    if (mine === reqId) render(d, q, false, dir);
+    if (mine === reqId) render(d, q, false, dir, node);
   } catch (err) {
     if (mine !== reqId) return;
     if (!featured.length) await loadFeatured();
-    const snap = featured.find(f => f.q === q && f.direction === dir && cluster == null && !implied);
+    const snap = featured.find(f => f.q === q && f.direction === dir && cluster == null && !node && !implied);
     if (snap) render(snap.answer, q, true, dir);
     else answerEl.innerHTML = `<p class="status">The graph service did not answer. Check the connection and ask again, or pick a featured question, which works offline.</p>`;
   }
 }
 
+function setDirection(dir) { document.querySelector(`.dir button[data-dir="${dir}"]`).click(); }
 document.querySelectorAll(".dir button").forEach(b => b.addEventListener("click", () => {
+  const changed = direction !== b.dataset.dir;
   direction = b.dataset.dir;
+  if (changed) loadBrowse();
   document.querySelectorAll(".dir button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
   document.getElementById("q").placeholder = direction === "causes" ? "Why were farmers protesting at the Punjab-Haryana border?" : "What did the killing of the trainee doctor in Kolkata lead to?";
 }));
+/* Follow the story: any event card asks about that exact event. */
+answerEl.addEventListener("click", e => {
+  const card = e.target.closest("button.node[data-node]");
+  if (card) { ask(card.dataset.label, null, card.dataset.node); answerEl.scrollIntoView({ behavior: reduce ? "auto" : "smooth" }); }
+});
+
+/* Browse: every protest (or every cause, in the other direction) the graph can answer for. */
+const browse = document.getElementById("browse"), browseList = document.getElementById("browse-list"), browseFilter = document.getElementById("browse-filter");
+let browseReq = 0;
+async function loadBrowse() {
+  if (!browse.open) { browse.dataset.stale = "1"; return; }
+  delete browse.dataset.stale;
+  const mine = ++browseReq, dir = direction, implied = document.getElementById("implied").checked;
+  browseList.innerHTML = `<p class="status">Loading the list…</p>`;
+  try {
+    const res = await fetch(`/api/explain/topics?direction=${dir}${implied ? "&implied=true" : ""}`, { signal: AbortSignal.timeout(12000) });
+    const d = await res.json();
+    if (d.error || !d.topics) throw new Error(d.error);
+    if (mine !== browseReq) return;
+    document.getElementById("browse-title").textContent = dir === "causes"
+      ? `Browse all ${fmt(d.topics.length)} protests the graph explains` : `Browse all ${fmt(d.topics.length)} causes and what they led to`;
+    browseList.innerHTML = d.topics.map(t => `<button type="button" data-node="${esc(t.id)}" data-label="${esc(t.label)}" data-search="${esc([t.label, t.description, t.date].join(" ").toLowerCase())}">${esc(t.label)}<small>${esc(t.date ? t.date.slice(0, 10) : "ongoing condition")}</small></button>`).join("");
+    filterBrowse();
+  } catch (err) {
+    if (mine === browseReq) browseList.innerHTML = `<p class="status">The list did not load. Close and reopen this panel to try again.</p>`;
+  }
+}
+function filterBrowse() {
+  const f = browseFilter.value.trim().toLowerCase();
+  let shown = 0;
+  browseList.querySelectorAll("button").forEach(b => { b.hidden = !!f && !b.dataset.search.includes(f); shown += !b.hidden; });
+  document.getElementById("browse-none")?.remove();
+  if (!shown && f) browseList.insertAdjacentHTML("beforeend", `<p class="status" id="browse-none">Nothing in the list mentions “${esc(browseFilter.value.trim())}”. Try a person, group or month.</p>`);
+}
+browse.addEventListener("toggle", () => { if (browse.open && (browse.dataset.stale || !browseList.querySelector("button"))) loadBrowse(); });
+browseFilter.addEventListener("input", filterBrowse);
+browseList.addEventListener("click", e => {
+  const b = e.target.closest("button[data-node]");
+  if (b) { ask(b.dataset.label, null, b.dataset.node); answerEl.scrollIntoView({ behavior: reduce ? "auto" : "smooth" }); }
+});
+document.getElementById("implied").addEventListener("change", loadBrowse);
+
 document.getElementById("qform").addEventListener("submit", e => { e.preventDefault(); ask(document.getElementById("q").value); });
 
 /* Chips live in the markup; their saved answers load in the background and are only used if a live call fails. */
