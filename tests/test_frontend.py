@@ -57,3 +57,13 @@ def test_demo_tells_the_story_with_measured_figures():
     assert 'fetch("/api/explain/stats' in source
     for figure in ("3.8", "4.0", "20,129", "69 / 69", "1.18", "0.07"):
         assert figure in source, figure
+
+
+def test_demo_query_handles_every_answer_and_works_offline():
+    source = DEMO_PATH.read_text()
+    assert "/static/demo-featured.json" in source
+    assert "status === 'clarify'" in source and "status === 'no_match'" in source
+    assert "implied=true" in source
+    assert '<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"' in source
+    assert "saved answer" in source
+    assert 'e.key === "/"' in source and '"123456".includes(e.key)' in source
