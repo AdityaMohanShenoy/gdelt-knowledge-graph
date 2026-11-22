@@ -1,1 +1,248 @@
-<!-- demo page: built in Tasks 3-4 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why It Happened — Causal Graph Demo</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='8' cy='16' r='5' fill='%23f2b33d'/%3E%3Ccircle cx='24' cy='16' r='5' fill='%233dd6a3'/%3E%3Cpath d='M13 16h6' stroke='%23e6ecf3' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* Night observatory: one left-aligned column per section, the causal chain is the only loud thing. */
+:root {
+  --ground: #0e1a2b;
+  --deep: #0a1422;
+  --panel: #13233a;
+  --line: #24374f;
+  --text: #e6ecf3;
+  --muted: #93a4ba;
+  --amber: #f2b33d;
+  --green: #3dd6a3;
+  --coral: #ff7a6b;
+  --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body: "Public Sans", "Helvetica Neue", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--ground); color: var(--text); font: 400 19px/1.6 var(--body); }
+a { color: var(--amber); }
+:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
+
+.wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding-inline: max(24px, env(safe-area-inset-left)); }
+section { min-height: 100vh; padding-block: 12vh 10vh; display: flex; flex-direction: column; justify-content: center; }
+section:nth-of-type(even) { background: var(--deep); }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h1 { font-size: clamp(42px, 5.6vw, 84px); line-height: 1.02; font-weight: 800; max-width: 17ch; }
+h2 { font-size: clamp(34px, 4.4vw, 60px); line-height: 1.08; max-width: 20ch; }
+h3 { font-size: 22px; }
+.lede { color: var(--muted); font-size: clamp(19px, 1.6vw, 23px); max-width: 60ch; margin: 22px 0 0; }
+.source { color: var(--muted); font-size: 14px; margin-top: 28px; }
+.num { font-family: var(--display); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+
+/* Hero */
+.counters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 32px; margin-top: 56px; }
+.counter .num { font-size: clamp(44px, 5vw, 76px); color: var(--amber); }
+.counter.good .num { color: var(--green); }
+.counter p { margin: 10px 0 0; color: var(--muted); font-size: 17px; max-width: 22ch; }
+
+/* Problem */
+.duel { display: grid; gap: 22px; margin-top: 56px; max-width: 760px; }
+.bar-row { display: grid; grid-template-columns: 240px 1fr 80px; align-items: center; gap: 18px; }
+.bar-row span:first-child { color: var(--muted); font-size: 17px; }
+.track { height: 34px; background: var(--panel); border-radius: 6px; overflow: hidden; }
+.fill { height: 100%; background: var(--muted); border-radius: 6px; transform: scaleX(0); transform-origin: left; transition: transform 1.2s cubic-bezier(.2,.7,.2,1); }
+.fill.amber { background: var(--amber); }
+.bar-row .num { font-size: 30px; text-align: right; }
+.verdict { margin-top: 40px; font-family: var(--display); font-size: clamp(24px, 2.4vw, 32px); max-width: 28ch; }
+
+/* Funnel */
+.funnel { list-style: none; padding: 0; margin: 56px 0 0; display: grid; gap: 12px; }
+.funnel li { display: grid; grid-template-columns: 200px 1fr; align-items: center; gap: 24px; }
+.funnel .num { font-size: clamp(34px, 3.6vw, 48px); color: var(--text); text-align: right; }
+.funnel .step { background: var(--panel); padding: 14px 20px; border-radius: 8px; }
+.funnel li:last-child .num { color: var(--amber); }
+.funnel li:last-child .step { background: rgba(242, 179, 61, 0.14); }
+.funnel .step b { display: block; font-weight: 600; }
+.funnel .step small { color: var(--muted); font-size: 16px; }
+
+/* Graph mix */
+.mix { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 48px; margin-top: 56px; }
+.mix h3 { margin-bottom: 18px; }
+.hbar { display: grid; grid-template-columns: 150px 1fr 60px; gap: 12px; align-items: center; margin-bottom: 10px; font-size: 16px; }
+.hbar .track { height: 18px; }
+.hbar .fill { background: var(--amber); }
+.hbar .count { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.hbar.ok .fill { background: var(--green); }
+
+/* Trust */
+.trust-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 56px; margin-top: 56px; align-items: start; }
+.big-score .num { font-size: clamp(96px, 11vw, 156px); color: var(--green); }
+.big-score p { color: var(--muted); margin: 12px 0 0; max-width: 34ch; }
+.splits { display: grid; gap: 18px; }
+.split { background: var(--panel); border-radius: 10px; padding: 20px 24px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 16px; }
+.split .num { font-size: 40px; grid-row: span 2; }
+.split.good .num { color: var(--green); }
+.split.warn .num { color: var(--coral); }
+.split b { font-weight: 600; }
+.split small { color: var(--muted); font-size: 16px; }
+.labour { margin-top: 64px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 18px 28px; }
+.labour .num { font-size: clamp(48px, 5vw, 72px); }
+.labour .from { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 3px; }
+.labour .to { color: var(--amber); }
+.labour p { margin: 0; color: var(--muted); max-width: 36ch; }
+
+@media (max-width: 760px) {
+  body { font-size: 17px; }
+  .bar-row { grid-template-columns: 1fr 64px; }
+  .bar-row span:first-child { grid-column: 1 / -1; }
+  .bar-row .track { grid-column: 1; }
+  .funnel li { grid-template-columns: 1fr; gap: 6px; }
+  .funnel .num { text-align: left; }
+  .trust-grid { grid-template-columns: 1fr; }
+  .counters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hbar { grid-template-columns: 110px 1fr 48px; }
+}
+@media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
+</style>
+</head>
+<body>
+
+<section id="hero">
+  <div class="wrap">
+    <h1>News says why. Databases only say what.</h1>
+    <p class="lede">GDELT logs millions of events from the world's news, but never the reason they happened.
+      This project reads the articles behind 2024's Indian protests and turns the reasons they state
+      into a causal graph you can question, with every link quoted from its source.</p>
+    <div class="counters">
+      <div class="counter"><div class="num" data-count="2000">2,000</div><p>news articles read</p></div>
+      <div class="counter"><div class="num" data-stat="links">1,416</div><p>cause-and-effect links, each with its quote</p></div>
+      <div class="counter"><div class="num" data-stat="protests">358</div><p>protests with an explained cause</p></div>
+      <div class="counter good"><div class="num">90%</div><p>of links correct in a random human audit</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="problem">
+  <div class="wrap">
+    <h2>Event codes alone cannot tell a cause from a coincidence.</h2>
+    <p class="lede">We first tried the obvious shortcut: score possible causes from GDELT's own fields
+      (who, where, which event code, how many days apart). Then we fed it pairs of events that had
+      nothing to do with each other.</p>
+    <div class="duel">
+      <div class="bar-row"><span>Real cause-and-effect pairs</span><div class="track"><div class="fill" data-width="3.8"></div></div><span class="num">3.8%</span></div>
+      <div class="bar-row"><span>Shuffled, unrelated pairs</span><div class="track"><div class="fill amber" data-width="4.0"></div></div><span class="num">4.0%</span></div>
+    </div>
+    <p class="verdict">It flagged random pairs as often as real ones, and 0 of the 322 causes it
+      proposed was a cause the articles actually support.</p>
+    <p class="source">Share of pairs given the scorer's "pattern" grade. Source: project negative-control test (docs/measurements/negative_controls.md).</p>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>So we read the articles, and kept only what they say.</h2>
+    <p class="lede">Every field is copied word for word from the text. A link is kept only when the article
+      states it, and a second, independent check must agree before it enters the graph.</p>
+    <ol class="funnel">
+      <li><span class="num">2,000</span><div class="step"><b>Articles fetched from GDELT links</b><small>Indian news, 2024</small></div></li>
+      <li><span class="num">915</span><div class="step"><b>Kept as protest stories</b><small>the rest are off-topic or not about a protest</small></div></li>
+      <li><span class="num">7,083</span><div class="step"><b>Events pulled out, word for word</b><small>who did what, where and when</small></div></li>
+      <li><span class="num">6,152</span><div class="step"><b>Distinct events after merging repeats</b><small>plus 810 standing grievances, such as unpaid dues</small></div></li>
+      <li><span class="num">20,129</span><div class="step"><b>Possible causes checked against the text</b><small>each accepted only with an exact quote</small></div></li>
+      <li><span class="num" data-stat="links">1,416</span><div class="step"><b>Causal links in the final graph</b><small>no loops, rebuilt identically every time</small></div></li>
+    </ol>
+  </div>
+</section>
+
+<section id="graph">
+  <div class="wrap">
+    <h2>What the graph holds.</h2>
+    <p class="lede">Most protests are explained by the grievance behind them; others by a spark, a call to
+      march, or an earlier stage of the same dispute.</p>
+    <div class="mix">
+      <div><h3>Kinds of link</h3><div id="mix-relation"></div></div>
+      <div><h3>How far back</h3><div id="mix-depth"></div>
+        <h3 style="margin-top:32px">Evidence</h3><div id="mix-evidence"></div></div>
+    </div>
+    <p class="source">Counted live from the published graph.</p>
+  </div>
+</section>
+
+<section id="trust">
+  <div class="wrap">
+    <h2>Can you trust it? We checked by hand.</h2>
+    <p class="lede">A person reviewed 100 links picked at random from the ones nobody had checked.</p>
+    <div class="trust-grid">
+      <div class="big-score"><div class="num">89 / 99</div>
+        <p>judged correct, one left undecided: 90%, with a 95% range of 82–94%.</p></div>
+      <div class="splits">
+        <div class="split good"><b>Stated in plain causal words</b><span class="num">69 / 69</span><small>"protesting against", "in response to"</small></div>
+        <div class="split warn"><b>Only implied by the text</b><span class="num">20 / 30</span><small>so these are hidden until a person checks them</small></div>
+      </div>
+    </div>
+    <div class="labour">
+      <span class="num from">1.18</span><span class="num to">0.07</span>
+      <p>human checks per published link, before and after the algorithm: about 17 times less work.</p>
+    </div>
+    <p class="source">Source: docs/measurements/scale_2000.md (human audit and labour).</p>
+  </div>
+</section>
+
+<section id="ask">
+  <div class="wrap">
+    <h2>Ask it why.</h2>
+  </div>
+</section>
+
+<script>
+const fmt = n => Number(n).toLocaleString("en-US");
+const LABEL = { MOTIVATES: "Motivated by", TRIGGERS: "Set off by", ESCALATES: "Earlier stage",
+                PROMPTS_RESPONSE: "Answered", MOBILIZES: "Organised by" };
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function bars(el, entries, cls = "") {
+  const max = Math.max(...entries.map(([, v]) => v), 1);
+  el.innerHTML = entries.map(([k, v]) =>
+    `<div class="hbar ${cls}"><span>${k}</span><div class="track"><div class="fill" data-width="${(100 * v / max).toFixed(1)}"></div></div><span class="count">${fmt(v)}</span></div>`
+  ).join("");
+}
+
+function countUp(el, target) {
+  if (reduce) { el.textContent = fmt(target); return; }
+  const t0 = performance.now(), dur = 1400;
+  const step = t => {
+    const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmt(Math.round(target * e));
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+const io = new IntersectionObserver(entries => entries.forEach(entry => {
+  if (!entry.isIntersecting) return;
+  entry.target.querySelectorAll(".fill[data-width]").forEach(f => {
+    const w = parseFloat(f.dataset.width);
+    f.style.transform = `scaleX(${(f.closest(".duel") ? w * 20 : w) / 100})`;  /* problem bars: 5% = full track */
+  });
+  entry.target.querySelectorAll("[data-count]").forEach(n => countUp(n, +n.dataset.count));
+  io.unobserve(entry.target);
+}), { threshold: 0.35 });
+
+async function loadStats() {
+  try {
+    const all = await (await fetch("/api/explain/stats?implied=true")).json();
+    document.querySelectorAll('[data-stat]').forEach(n => { n.dataset.count = all[n.dataset.stat]; n.textContent = fmt(all[n.dataset.stat]); });
+    const rel = Object.entries(all.by_relation).sort((a, b) => b[1] - a[1]).map(([k, v]) => [LABEL[k] || k, v]);
+    bars(document.getElementById("mix-relation"), rel);
+    bars(document.getElementById("mix-depth"), Object.entries(all.by_depth).map(([d, v]) => [d === "1" ? "Direct cause" : `${d} steps back`, v]));
+    bars(document.getElementById("mix-evidence"), [["Stated", all.by_evidence.explicit || 0], ["Implied", all.by_evidence.implicit || 0]], "ok");
+  } catch (e) { /* counters keep their printed values */ }
+  document.querySelectorAll("section").forEach(s => io.observe(s));
+}
+loadStats();
+</script>
+</body>
+</html>

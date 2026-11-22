@@ -45,3 +45,15 @@ def test_inline_javascript_parses():
     )
 
     assert result.stderr == ""
+
+
+DEMO_PATH = ROOT / "frontend" / "demo.html"
+
+
+def test_demo_tells_the_story_with_measured_figures():
+    source = DEMO_PATH.read_text()
+    for section in ("hero", "problem", "how", "graph", "trust", "ask"):
+        assert f'id="{section}"' in source
+    assert 'fetch("/api/explain/stats' in source
+    for figure in ("3.8", "4.0", "20,129", "69 / 69", "1.18", "0.07"):
+        assert figure in source, figure
