@@ -817,6 +817,20 @@ async def explain_topics(direction: str = "causes", implied: bool = False):
             "hidden_implied": g.data.get("hidden_implied", 0)}
 
 
+@app.get("/api/explain/stats")
+async def explain_stats(implied: bool = False):
+    """Live counts for the demo page, from the same graph view the explain API uses."""
+    g = get_graph(implied)
+    if g is None:
+        return {"error": "no_graph"}
+    return {**causal_query.graph_stats(g), "hidden_implied": g.data.get("hidden_implied", 0)}
+
+
+@app.get("/demo")
+async def demo():
+    return FileResponse(ROOT / "frontend" / "demo.html")
+
+
 @app.get("/api/explain")
 async def explain_question(q: str = "", cluster: int | None = None, k: int = 5,
                            node: str | None = None, implied: bool = False):

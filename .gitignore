@@ -85,3 +85,5 @@ out/negative_controls.json
 
 # Pinned 5.6GB of wheels nothing imports; regenerate with uv if wanted
 uv.lock
+
+.superpowers/

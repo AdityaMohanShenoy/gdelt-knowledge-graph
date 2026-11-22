@@ -4,7 +4,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from causal_query import Graph, explain, ground, label, without_unchecked_implied  # noqa: E402
+from causal_query import (  # noqa: E402
+    Graph,
+    explain,
+    graph_stats,
+    ground,
+    label,
+    without_unchecked_implied,
+)
 
 
 def node(nid, description, kind="event", date="2024-08-17", status="PARENTS_FOUND", actors=()):
@@ -109,3 +116,13 @@ def test_default_view_hides_only_unchecked_implied_links():
     assert [e["source"] for e in view["edges"]] == ["ce:a", "ce:d"]
     assert view["hidden_implied"] == 1
     assert len(data["edges"]) == 3  # the published graph itself is untouched
+
+
+def test_graph_stats_counts_the_graph():
+    st = graph_stats(GRAPH)
+    assert st["links"] == 5 and st["nodes"] == 8
+    assert st["by_relation"] == {"MOBILIZES": 1, "MOTIVATES": 2, "TRIGGERS": 2}
+    assert st["by_depth"] == {"1": 4, "2": 1}
+    assert st["by_evidence"] == {"explicit": 5}
+    assert st["protests"] == len(GRAPH.seeds)
+    assert st["person_checked"] == 0
