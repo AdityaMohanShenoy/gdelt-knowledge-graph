@@ -126,3 +126,13 @@ def test_graph_stats_counts_the_graph():
     assert st["by_evidence"] == {"explicit": 5}
     assert st["protests"] == len(GRAPH.seeds)
     assert st["person_checked"] == 0
+
+
+def test_featured_snapshot_matches_published_graph():
+    import hashlib
+    import json
+    snap = json.loads((ROOT / "frontend" / "demo-featured.json").read_text())
+    published = hashlib.sha256((ROOT / "out" / "causal_graph.json").read_bytes()).hexdigest()
+    assert snap["graph_version"] == published
+    assert len(snap["questions"]) == 4
+    assert all(q["answer"]["status"] == "ok" and q["answer"]["paths"] for q in snap["questions"])
