@@ -173,12 +173,12 @@ h3 { font-size: 22px; }
       (who, where, which event code, how many days apart). Then we fed it pairs of events that had
       nothing to do with each other.</p>
     <div class="duel">
-      <div class="bar-row"><span>Real cause-and-effect pairs</span><div class="track"><div class="fill" data-width="3.8"></div></div><span class="num">3.8%</span></div>
-      <div class="bar-row"><span>Shuffled, unrelated pairs</span><div class="track"><div class="fill amber" data-width="4.0"></div></div><span class="num">4.0%</span></div>
+      <div class="bar-row"><span>Candidates around real protests</span><div class="track"><div class="fill" data-width="3.8"></div></div><span class="num">3.8%</span></div>
+      <div class="bar-row"><span>Shuffled, unrelated candidates</span><div class="track"><div class="fill amber" data-width="4.0"></div></div><span class="num">4.0%</span></div>
     </div>
     <p class="verdict">It flagged random pairs as often as real ones, and 0 of the 322 causes it
       proposed was a cause the articles actually support.</p>
-    <p class="source">Share of pairs given the scorer's "pattern" grade. Source: project negative-control test (docs/measurements/negative_controls.md).</p>
+    <p class="source">Share of candidates given the scorer's "pattern" grade. Sources: docs/measurements/negative_controls.md (the two bars) and docs/measurements/branching.md (0 of 322).</p>
   </div>
 </section>
 
@@ -221,14 +221,14 @@ h3 { font-size: 22px; }
         <p>judged correct, one left undecided: 90%, with a 95% range of 82–94%.</p></div>
       <div class="splits">
         <div class="split good"><b>Stated in plain causal words</b><span class="num">69 / 69</span><small>"protesting against", "in response to"</small></div>
-        <div class="split warn"><b>Only implied by the text</b><span class="num">20 / 30</span><small>so these are hidden until a person checks them</small></div>
+        <div class="split warn"><b>Only implied by the text</b><span class="num">20 / 30</span><small>so the query box shows them only after a person reviews them; 284 of these had only a quick review</small></div>
       </div>
     </div>
     <div class="labour">
       <span class="num from">1.18</span><span class="num to">0.07</span>
       <p>human checks per published link, before and after the algorithm: about 17 times less work.</p>
     </div>
-    <p class="source">Source: docs/measurements/scale_2000.md (human audit and labour).</p>
+    <p class="source">Sources: docs/measurements/scale_2000.md (audit) and paper/iccids2027.tex, human labour section (checks per link).</p>
   </div>
 </section>
 
@@ -248,7 +248,7 @@ h3 { font-size: 22px; }
         <button type="submit">Ask</button>
       </form>
       <div class="chips" id="chips" aria-label="Featured questions"></div>
-      <label class="opt"><input type="checkbox" id="implied"> Include links that are only implied and not yet checked by a person</label>
+      <label class="opt"><input type="checkbox" id="implied"> Include links that are only implied and not yet checked by a person<span id="hidden-note"></span></label>
     </div>
     <div id="answer" aria-live="polite"></div>
     <svg id="net" role="img" aria-label="Network of the answer's causes" hidden></svg>
@@ -265,7 +265,7 @@ const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 function bars(el, entries, cls = "") {
   const max = Math.max(...entries.map(([, v]) => v), 1);
   el.innerHTML = entries.map(([k, v]) =>
-    `<div class="hbar ${cls}"><span>${k}</span><div class="track"><div class="fill" data-width="${(100 * v / max).toFixed(1)}"></div></div><span class="count">${fmt(v)}</span></div>`
+    `<div class="hbar ${cls}"><span>${esc(k)}</span><div class="track"><div class="fill" data-width="${(100 * v / max).toFixed(1)}"></div></div><span class="count">${fmt(v)}</span></div>`
   ).join("");
 }
 
@@ -297,6 +297,8 @@ async function loadStats() {
     const rel = Object.entries(all.by_relation).sort((a, b) => b[1] - a[1]).map(([k, v]) => [LABEL[k] || k, v]);
     bars(document.getElementById("mix-relation"), rel);
     bars(document.getElementById("mix-depth"), Object.entries(all.by_depth).map(([d, v]) => [d === "1" ? "Direct cause" : `${d} steps back`, v]));
+    const def = await (await fetch("/api/explain/stats")).json();
+    if (def.hidden_implied) document.getElementById("hidden-note").textContent = ` (${fmt(def.hidden_implied)} hidden now)`;
     bars(document.getElementById("mix-evidence"), [["Stated", all.by_evidence.explicit || 0], ["Implied", all.by_evidence.implicit || 0]], "ok");
   } catch (e) { /* counters keep their printed values */ }
   document.querySelectorAll("section").forEach(s => io.observe(s));
@@ -308,6 +310,7 @@ const VERB = { TRIGGERS: "set off", MOTIVATES: "motivated", MOBILIZES: "organise
                ESCALATES: "escalated into", PROMPTS_RESPONSE: "prompted" };
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const host = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
+const webUrl = u => { try { const p = new URL(u).protocol; return p === "https:" || p === "http:"; } catch { return false; } };
 let direction = "causes", featured = [];
 const answerEl = document.getElementById("answer"), net = document.getElementById("net");
 
@@ -317,18 +320,18 @@ function nodeCard(n, isTarget, delay) {
 }
 function linkCard(e, delay) {
   const q = e.evidence && e.evidence[0] ? e.evidence[0].text : "";
-  const src = e.source_urls && e.source_urls[0];
+  const src = e.source_urls && webUrl(e.source_urls[0]) ? e.source_urls[0] : null;
   return `<div class="link reveal" style="animation-delay:${delay}ms">
     <span class="rel">${esc(VERB[e.relation] || e.relation)}</span>
     <q>${esc(q)}</q>
     <span class="meta">${e.human_verified ? '<span class="badge person">Checked by a person</span>' : ""}${e.evidence_quality === "implicit" ? '<span class="badge implied">Implied</span>' : ""}${src ? `<a href="${esc(src)}" target="_blank" rel="noopener">${esc(host(src))}</a>` : ""}</span></div>`;
 }
 
-function render(d, q, saved) {
+function render(d, q, saved, direction) {
   net.hidden = true;
   if (d.status === 'clarify') {
     answerEl.innerHTML = `<p class="status">That matches several stories. Which one do you mean?</p><div class="choices chips">${
-      d.options.map(o => `<button type="button" data-cluster="${o.cluster}">${esc(o.label)}${o.date_range ? ` (${o.date_range[0]} to ${o.date_range[1]})` : ""}</button>`).join("")}</div>`;
+      d.options.map(o => `<button type="button" data-cluster="${esc(o.cluster)}">${esc(o.label)}${o.date_range ? ` (${esc(o.date_range[0])} to ${esc(o.date_range[1])})` : ""}</button>`).join("")}</div>`;
     answerEl.querySelectorAll("[data-cluster]").forEach(b => b.addEventListener("click", () => ask(q, b.dataset.cluster)));
     return;
   }
@@ -381,19 +384,24 @@ function drawNet(paths) {
   sim.on("tick", tick); tick();
 }
 
+let reqId = 0;
 async function ask(q, cluster) {
   q = q.trim(); if (!q) return;
+  const mine = ++reqId, dir = direction;
   answerEl.innerHTML = `<p class="status">Searching the graph…</p>`;
   const implied = document.getElementById("implied").checked;
   const qs = new URLSearchParams({ q }); if (cluster != null) qs.set("cluster", cluster);
-  const url = `/api/${direction === "causes" ? "explain" : "consequences"}?${qs}${implied ? "&implied=true" : ""}`;
+  const url = `/api/${dir === "causes" ? "explain" : "consequences"}?${qs}${implied ? "&implied=true" : ""}`;
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(res.status);
-    render(await res.json(), q, false);
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    if (mine === reqId) render(d, q, false, dir);
   } catch (err) {
-    const snap = featured.find(f => f.q === q && f.direction === direction && cluster == null && !implied);
-    if (snap) render(snap.answer, q, true);
+    if (mine !== reqId) return;
+    const snap = featured.find(f => f.q === q && f.direction === dir && cluster == null && !implied);
+    if (snap) render(snap.answer, q, true, dir);
     else answerEl.innerHTML = `<p class="status">The graph service did not answer. Check the connection and ask again, or pick a featured question, which works offline.</p>`;
   }
 }

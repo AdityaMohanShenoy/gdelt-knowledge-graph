@@ -67,3 +67,18 @@ def test_demo_query_handles_every_answer_and_works_offline():
     assert '<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"' in source
     assert "saved answer" in source
     assert 'e.key === "/"' in source and '"123456".includes(e.key)' in source
+
+
+def test_demo_review_fixes():
+    source = DEMO_PATH.read_text()
+    # sources named for every fixed figure
+    assert "branching.md" in source and "paper/iccids2027.tex" in source
+    # the GDELT baseline compares candidates, not confirmed causal pairs
+    assert "Real cause-and-effect pairs" not in source
+    # implied links: the default view's hidden count is shown, and the claim stays honest
+    assert "hidden_implied" in source
+    assert "hidden until a person checks them" not in source
+    # a 200 with {"error": ...} falls back like a failed fetch; stale answers are dropped
+    assert "if (d.error) throw" in source and "reqId" in source
+    # only http(s) source links are rendered as links
+    assert 'p === "https:" || p === "http:"' in source and "webUrl(e.source_urls[0])" in source
