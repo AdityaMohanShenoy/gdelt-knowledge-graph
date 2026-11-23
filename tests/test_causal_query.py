@@ -206,3 +206,22 @@ def test_questions_that_name_real_things_still_answer():
               "What did Kejriwal's arrest lead to?", "What did the NEET paper leak lead to?",
               "What did the Sandeshkhali allegations lead to?"):
         assert explain(published(), q, direction="effects")["status"] == "ok", q
+
+
+def test_place_names_count_in_any_case_and_position():
+    r = explain(published(), "why were farmers protesting at the kerala pakistan border")
+    assert r["status"] == "no_match" and r["missing"] == ["kerala", "pakistan"]
+    r = explain(published(), "Kerala farmers protested at the Pakistan border, why?")
+    # "Kerala" as the first word now counts; the best story is a Kerala one, which lacks Pakistan
+    assert r["status"] == "no_match" and r["missing"] == ["Pakistan"]
+
+
+def test_years_outside_2024_are_refused():
+    r = explain(published(), "Why did farmers protest in 2019?")
+    assert r["status"] == "no_match" and r["outside_2024"] == ["2019"]
+    assert r["closest"]  # the 2024 story is still offered
+
+
+def test_answers_say_which_words_they_matched():
+    r = explain(published(), "Why were farmers protesting at the Punjab-Haryana border in February 2024?")
+    assert r["matched"] == ["farmers", "protesting", "Punjab", "Haryana", "border", "February", "2024"]
