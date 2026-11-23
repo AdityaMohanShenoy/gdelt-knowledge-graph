@@ -134,3 +134,11 @@ def test_demo_journey_review_fixes():
     assert "function toAsk() {\n  stopAll();" in source
     # a mouse click on Back or a step button does not capture later Space presses
     assert "currentTarget.blur()" in source
+
+
+def test_demo_says_what_a_question_names_that_the_graph_lacks():
+    source = DEMO_PATH.read_text()
+    # names the missing words, offers the closest story, and only shows it when asked
+    assert "d.missing" in source and "d.closest" in source
+    assert "Show the closest story" in source
+    assert "ask(q, d.closest.cluster)" in source

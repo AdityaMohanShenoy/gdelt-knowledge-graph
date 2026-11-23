@@ -35,6 +35,22 @@ def tokens(text: str) -> list[str]:
             for w in words if len(w) > 2 and w not in STOP]
 
 
+MONTHS = frozenset("january february march april may june july august september october "
+                   "november december".split())
+
+
+def names(question: str) -> list[tuple[str, str]]:
+    """The names and figures a question pins down: capitalised words after the first, and
+    numbers. A story that lacks one of them is not what was asked about, however many other
+    words it shares. Month names are left out: the graph stores dates as dates, not words.
+    Returns (word as asked, index token) pairs, in question order."""
+    out: list[tuple[str, str]] = []
+    for i, word in enumerate(re.findall(r"[A-Za-z0-9]+", question or "")):
+        if word.isdigit() or (i > 0 and word[0].isupper() and word.lower() not in MONTHS):
+            out += [(word, t) for t in tokens(word) if (word, t) not in out]
+    return out
+
+
 def without_unchecked_implied(data: dict) -> dict:
     """The default view: drop AI-only links that rest on implied evidence.
 
@@ -120,6 +136,15 @@ class Graph:
         n = len(self.docs)
         self.idf = {t: math.log(1 + (n - f + 0.5) / (f + 0.5)) for t, f in df.items()}
 
+    def vocabulary(self, cluster: int) -> set[str]:
+        """Every index token of a story (a weakly connected component)."""
+        if not hasattr(self, "_vocab"):
+            self._vocab: dict[int, set[str]] = {}
+        if cluster not in self._vocab:
+            self._vocab[cluster] = {t for n, c in self.component.items() if c == cluster
+                                    for t in self.docs[n]}
+        return self._vocab[cluster]
+
     def relevance(self, question: str) -> dict[str, float]:
         """BM25 score of every node for the question; zero scores are left out."""
         query = set(tokens(question))
@@ -145,6 +170,18 @@ def ground(graph: Graph, question: str, cluster: int | None = None) -> dict:
         c = graph.component[nid]
         best[c] = max(best.get(c, 0.0), s)
     ranked = sorted(best, key=lambda c: (-best[c], c))
+    # A story that lacks a name or figure from the question is not the one asked about.
+    # When no matching story has them all, say what is missing and offer the closest
+    # story rather than answer it as if it were asked. Choosing a cluster skips this.
+    need = names(question) if cluster is None else []
+    if need:
+        fits = [c for c in ranked if all(t in graph.vocabulary(c) for _, t in need)]
+        if not fits:
+            vocab = graph.vocabulary(ranked[0])
+            missing = list(dict.fromkeys(w for w, t in need if t not in vocab))
+            return {"status": "no_match", "query_terms": sorted(set(tokens(question))),
+                    "missing": missing, "closest": cluster_card(graph, ranked[0], scores)}
+        ranked = fits
     options = [c for c in ranked if best[c] >= CLARIFY_RATIO * best[ranked[0]]]
     if cluster is None and len(options) > 1:
         return {"status": "clarify", "matching_clusters": len(options),

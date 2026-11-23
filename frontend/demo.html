@@ -355,6 +355,12 @@ function render(d, q, saved, direction, node) {
     document.getElementById("flip").addEventListener("click", () => { setDirection(other); ask(q, null, node); });
     return;
   }
+  if (d.status === 'no_match' && d.missing && d.missing.length && d.closest) {
+    const words = d.missing.map(w => `<b>${esc(w)}</b>`), list = words.length > 1 ? `${words.slice(0, -1).join(", ")} or ${words[words.length - 1]}` : words[0];
+    answerEl.innerHTML = `<p class="status">The graph has nothing about ${list}, so it will not guess. The closest story it has is <b>${esc(d.closest.label)}</b>.</p><div class="chips"><button type="button" id="closest">Show the closest story anyway</button></div>`;
+    document.getElementById("closest").addEventListener("click", () => ask(q, d.closest.cluster));
+    return;
+  }
   if (d.status === 'no_match' || !d.paths || !d.paths.length) {
     answerEl.innerHTML = `<p class="status">The graph has no protest that matches <b>${esc(q)}</b>. Try naming the place, the group or the month, or pick one of the questions above.</p>`;
     return;
