@@ -52,7 +52,7 @@ MENTION_REVIEW = ROOT / "data" / "evidence" / "scale" / "ext-1700.mentions.revie
 MEASURED = {
     "articles": 2000, "kept": 915, "mentions": 7083, "events": 6152, "conditions": 810,
     "claims": 20129, "gate_links": 1352, "gate_removed": 143, "decoys": 1352, "decoys_passed": 44,
-    "merged": 151, "merges_blocked": 5, "cycle_links": 11,
+    "same_decisions": 151, "merges_blocked": 5, "cycle_links": 11,
     "audit_correct": 89, "audit_decided": 99, "stated_correct": 69, "stated_checked": 69,
 }
 
@@ -173,7 +173,10 @@ def graph_block(graph: Graph) -> dict:
 
 def journey() -> None:
     graph = Graph.load(ROOT / "out" / "causal_graph.json", implied=True)
-    out = {"graph_version": graph.version, "measured": MEASURED, "gdelt": gdelt_block(),
+    counts = json.loads((ROOT / "out" / "causal_graph.json").read_text())["counts"]
+    measured = {**MEASURED, "merged_away": counts["nodes_merged_away"],
+                "self_loops_dropped": len(counts["self_loops_dropped"])}
+    out = {"graph_version": graph.version, "measured": measured, "gdelt": gdelt_block(),
            "article": article_block(), "story": story_block(graph), "graph": graph_block(graph),
            "protests_explained": len(graph.seeds)}
     path = ROOT / "frontend" / "demo-journey.json"

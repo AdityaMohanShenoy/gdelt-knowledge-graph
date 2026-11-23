@@ -28,7 +28,7 @@ Each step throws away what the text does not support, so the numbers shrink from
 5. **Plus 810 grievances.** Standing conditions that are not one-day events, such as "MSP guarantee" or "water shortage": 1,146 mentions merged into 810. They matter because most protests are caused by a grievance, not a single incident.
 6. **20,129 candidate causes judged.** For each protest we proposed possible causes and asked, for each one, "does the article say this caused that?" A link is accepted only if an exact supporting quote is found and checked by code. This ran three steps back (cause of a cause of a cause), plus rounds that recovered causes the articles state but extraction had missed.
 7. **143 links removed by the gate.** Every accepted link got a second, independent check that did not see the first verdict. To make sure that check was not just saying yes to everything, 1,352 real links were mixed one-to-one with 1,352 links that had been rejected earlier (decoys). It passed only 44 of the decoys (3%) and removed 143 of the real links.
-8. **Repair.** 151 duplicate events merged, 5 wrong merges blocked, 11 links removed to break loops (A causes B causes A).
+8. **Repair.** 151 same-event decisions folded 131 duplicate events into others, 5 wrong merges were blocked, 25 links whose two ends became one event were dropped, and 11 links were removed to break loops (A causes B causes A).
 9. **1,416 links published.** No loops, and rebuilding from the stored files gives exactly the same graph, byte for byte.
 
 On slide 5 the line "No model at query time" means answering a question uses only the stored graph and plain ranking maths, never an AI model, so the same question always gets the same answer.
@@ -46,7 +46,7 @@ The algorithms have few tuning numbers, and each one has a plain reason. If a pa
 | Decoys 1:1 | Build | B's work is half real accepted links and half earlier rejections, so a checker that says yes to everything would be caught. |
 | Cannot-link | Repair | Two events joined by a person-accepted cause link can never be merged into one event (the call for a march is not the march). |
 | Tarjan | Repair | A standard algorithm (1972) that finds loops in a graph. In each loop we drop the link whose quote does not support it. |
-| 151 / 5 / 11 | Repair | 151 duplicate events merged, 5 wrong merges blocked by the cannot-link rule, 11 links removed to break loops. |
+| 151 / 131 / 5 / 11 | Repair | 151 same-event decisions removed 131 duplicate events (several decisions can fold into one group); 5 wrong merges were blocked by the cannot-link rule, all from one verdict carried over from the pilot; 11 links were removed to break loops. |
 | BM25 | Query | The standard search-engine scoring (as in library search) used to match the question's words to events. |
 | 0.8 | Query | If a second story matches at least 80% as well as the best one, the site asks "which one do you mean?" instead of guessing. |
 | 1/2 | Query | Events in the chosen story that match at least half as well as the best match are treated as what the question is about. |

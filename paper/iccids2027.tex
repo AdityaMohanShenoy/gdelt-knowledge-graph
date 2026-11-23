@@ -169,12 +169,12 @@ artefacts that are never overwritten.
     \EndFor
   \EndFor
   \State $V, C \gets \textsc{Recover}(V, C)$ \Comment{stated, unextracted causes}
-  \State $T \gets \{u : A(u\rightarrow t)=\textit{accept}\}$
+  \State $T \gets \{u : A(u\rightarrow t)=\textit{accept}\}$ \Comment{first pass}
 \EndFor
 \For{each $c$ with $A(c)=\textit{accept}$ and $H(c)=\bot$}
   \State $B(c) \gets J(c)$ independently, mixed with decoys
 \EndFor
-\State $E \gets \{c \in C : \text{Eq.~(\ref{eq:gate}) holds}\}$
+\State $E \gets \{c \in C : \textsc{PassGate}(c)\}$ \Comment{Eq.~(\ref{eq:gate})}
 \State \Return $\textsc{Repair}(V, E, H)$
 \end{algorithmic}
 \end{algorithm}
@@ -222,8 +222,10 @@ with a validity window. An edge $u\rightarrow v$ asserts that $u$ led to $v$ and
 $r\in\mathcal{R}$, a strength $s\in\{1,2,3\}$, an evidence type
 $q\in\{\textit{explicit},\textit{implicit}\}$, the supporting quotations and source URLs, and the
 \emph{claims} behind it, where a claim is one annotated candidate pair. Let $H(c)$ be a human verdict
-on claim $c$ when one exists, $A(c)$ the first annotation and $B(c)$ an independent second
+on claim $c$ when one exists (any made before the build, including those carried over from
+earlier runs), $A(c)$ the first annotation and $B(c)$ an independent second
 annotation made without seeing $A(c)$. Claim $c$ supports an edge if and only if
+$\textsc{PassGate}(c)$ holds:
 \begin{equation}
 H(c)=\textit{accept} \;\lor\; \bigl(H(c)=\bot \land A(c)=\textit{accept} \land
 B(c)\neq\textit{reject}\bigr).
@@ -270,16 +272,23 @@ linked like any other.
 A human verdict outranks any annotation; otherwise an accepted claim survives only if the
 independent second annotation does not reject it (Eq.~\ref{eq:gate}). The second annotation sees
 neither the first verdict nor its chosen quotation, and its packets mix accepted claims one-to-one
-with earlier rejections as decoys, so that indiscriminate acceptance would show. \textsc{Repair}
+with earlier rejections as decoys, so that indiscriminate acceptance would show. Expansion follows
+first-pass acceptances and the gate is applied once, when the graph is compiled, so a cause reached
+only through a link the gate later removes stays in the graph without a path to any protest; this
+holds for 55 of the 1{,}416 published links (3.9\%), all at depth 2 or 3. \textsc{Repair}
 merges duplicate nodes but never joins both ends of a human-accepted link, a cannot-link constraint
 in the sense of constrained clustering~\cite{wagstaff}, and removes cycles, found with Tarjan's
 algorithm~\cite{tarjan}, by dropping the edge whose quotation fails to support it. The compiler is
 deterministic: the same inputs give a byte-identical graph whose SHA-256 digest is its version.
 
-With $n$ articles, each target keeps its same-article candidates and at most $k$ others, so the
-number of annotated claims grows as $O(nk)$ rather than $O(n^2)$, and the gate adds one annotation
-per accepted claim and decoy. Human effort during construction does not grow with $n$: a person is
-needed only to calibrate the gate once and to audit a sample.
+Each of the $N$ targets keeps its $s_t$ same-article candidates and at most $k$ others, so
+annotation costs $\sum_t s_t + kN$ claims rather than $O(N^2)$; the gate adds one annotation per
+accepted claim and decoy. The $s_t$ term is bounded by what a target's own articles report, not by
+the corpus: across the three depths its median was 6 and its 95th percentile at most 18, though a
+heavily reported event reached 57, and same-article candidates made up 30--59\% of the claims.
+Retrieval, which scores every target against every event by embedding similarity, is a cheap vector
+comparison and is not counted here. Human effort during construction does not grow with the corpus:
+a person is needed only to calibrate the gate once and to audit a sample.
 
 \subsection{Querying}
 Algorithm~\ref{alg:query} answers questions from graph records alone, with no model at query time.
@@ -364,9 +373,11 @@ Causes of the new nodes & 1{,}369 & 54 & 41 \\
 Stated causes, second pass & 24 & 19 & 19 \\
 \bottomrule
 \end{tabular}
-\end{table} \textsc{Repair} merged
-151 duplicate nodes, blocked 5 merges that would have joined a union's call for a march with the
-march itself, and removed 11 links from cycles; a simpler rule that cut each cycle's weakest link
+\end{table} \textsc{Repair} applied
+151 same-event decisions, folding 131 duplicate nodes into others and dropping 25 links whose two
+ends became one node; it blocked 5 merges that would have joined a union's call for a march with
+the march itself, all from one verdict carried over from the pilot, and removed 11 links from
+cycles; a simpler rule that cut each cycle's weakest link
 had removed correct links in testing.
 
 \begin{table}[t]
@@ -424,7 +435,7 @@ query time.
 
 \subsection{Human Effort}
 In the pilot a person issued 207 link verdicts for 176 published links, 1.18 per link. In the
-scale-up construction needed no human verdicts; 20{,}129 causal claims, 8{,}913 same-event pairs and
+scale-up no new human verdicts were made during construction (the pilot's verdicts stayed in $H$); 20{,}129 causal claims, 8{,}913 same-event pairs and
 16{,}604 node pairs were annotated automatically, and a person audited 100 of the 1{,}416 published
 links, 0.07 per link. Human verdicts per published link thus fell about seventeen-fold.
 
