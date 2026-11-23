@@ -166,7 +166,8 @@ def graph_block(graph: Graph) -> dict:
     story = find(index[STORY_EVENT])
     nodes = [[1 if graph.nodes[n].get("kind") == "condition" else 0,
               1 if find(i) == story else 0] for i, n in enumerate(ids)]
-    return {"nodes": nodes, "edges": edges, "story_size": sum(n[1] for n in nodes)}
+    return {"nodes": nodes, "edges": edges, "story_size": sum(n[1] for n in nodes),
+            "focus": index[STORY_EVENT]}
 
 
 def journey() -> None:
