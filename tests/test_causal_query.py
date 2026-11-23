@@ -52,9 +52,12 @@ GRAPH = Graph({
 
 
 def test_a_question_grounds_to_the_events_it_names():
-    g = ground(GRAPH, "Why did doctors in Salem boycott work?")
+    g = ground(GRAPH, "Why did doctors boycott work?")
     assert g["status"] == "ok" and g["targets"][0] == "ce:boycott"
     assert ground(GRAPH, "quantum physics")["status"] == "no_match"
+    # a place the story never mentions is refused, with the closest story offered
+    salem = ground(GRAPH, "Why did doctors in Salem boycott work?")
+    assert salem["status"] == "no_match" and salem["missing"] == ["Salem"]
 
 
 def test_several_matching_clusters_are_asked_back_not_guessed():
@@ -65,7 +68,7 @@ def test_several_matching_clusters_are_asked_back_not_guessed():
 
 
 def test_explanations_cite_only_relations_the_graph_holds():
-    r = explain(GRAPH, "Why did doctors in Salem boycott work?")
+    r = explain(GRAPH, "Why did doctors boycott work?")
     assert r["status"] == "ok"
     held = {(e["source"], e["target"], e["relation"]) for e in GRAPH.edges.values()}
     for path in r["paths"]:
@@ -85,7 +88,7 @@ def test_coverage_names_what_nobody_searched():
 
 
 def test_answers_are_deterministic_and_labels_drop_repeated_actors():
-    q = "Why did doctors in Salem boycott work?"
+    q = "Why did doctors boycott work?"
     assert explain(GRAPH, q) == explain(GRAPH, q)
     assert label({"kind": "event", "actors": ["the ED", "ED"],
                   "description": "the ED, ED arrested"}) == "ED arrested"
@@ -155,3 +158,51 @@ def test_journey_snapshot_is_grounded():
     march = next(n for n in published["nodes"] if n["id"] == snap["story"]["event"])
     assert snap["story"]["records"] == len(march["merged_from"]) + 1  # the survivor counts too
     assert all(c["edge_id"] in edge_ids for c in snap["story"]["causes"])
+
+
+PUBLISHED = None
+
+
+def published():
+    global PUBLISHED
+    if PUBLISHED is None:
+        PUBLISHED = Graph.load(ROOT / "out" / "causal_graph.json", implied=False)
+    return PUBLISHED
+
+
+def test_a_name_the_story_lacks_is_refused_not_answered():
+    q = "Why were farmers protesting at the Kerala-Pakistan border in February 20258?"
+    r = explain(published(), q)
+    assert r["status"] == "no_match"
+    assert r["missing"] == ["Kerala", "Pakistan", "20258"]
+    assert "farmer" in r["closest"]["label"].lower()  # the nearest story is offered, not shown
+    # choosing that story explicitly still answers it
+    assert explain(published(), q, cluster=r["closest"]["cluster"])["status"] == "ok"
+
+
+def test_unknown_names_are_refused_before_offering_a_menu():
+    r = explain(published(), "Why did aliens protest on Mars?")
+    assert r["status"] == "no_match" and r["missing"] == ["Mars"]
+
+
+def test_questions_that_name_real_things_still_answer():
+    answers = {
+        "Why were farmers protesting at the Punjab-Haryana border in February 2024?": "ok",
+        "Why did doctors in Kolkata go on hunger strike?": "ok",
+        "Why did Atishi go on a hunger strike over water?": "ok",
+        "Why did AAP workers protest after Kejriwal's arrest?": "ok",
+        "Why did BPSC aspirants protest in Patna?": "ok",
+        "Why did people protest after the Shivaji statue collapsed?": "ok",
+        "Why did students protest against NEET?": "ok",
+        "Why did students hold the Nabanna Abhiyan march?": "ok",
+        "Why did the junior doctors in Kolkata stop work?": "ok",
+        "Why did women protest in Sandeshkhali?": "ok",
+        "Why did Sonam Wangchuk go on a hunger strike?": "clarify",
+        "Why did teachers protest in West Bengal?": "clarify",
+    }
+    for q, status in answers.items():
+        assert explain(published(), q)["status"] == status, q
+    for q in ("What did the killing of the trainee doctor in Kolkata lead to?",
+              "What did Kejriwal's arrest lead to?", "What did the NEET paper leak lead to?",
+              "What did the Sandeshkhali allegations lead to?"):
+        assert explain(published(), q, direction="effects")["status"] == "ok", q

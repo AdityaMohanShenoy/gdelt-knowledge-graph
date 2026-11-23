@@ -205,6 +205,8 @@ artefacts that are never overwritten.
 \begin{algorithmic}[1]
 \Require graph $G$; question $x$; number of chains $m$
 \State score every node against $x$ with BM25 \Comment{story = weak component}
+\If{no matching story contains every name and figure in $x$} \Return the closest story, marked as not matching
+\EndIf
 \If{a second story scores $\ge 0.8$ of the best} \Return the stories to choose from
 \EndIf
 \State $Z \gets$ nodes of the best story scoring $\ge \frac{1}{2}$ of the best
@@ -294,6 +296,10 @@ a person is needed only to calibrate the gate once and to audit a sample.
 Algorithm~\ref{alg:query} answers questions from graph records alone, with no model at query time.
 It grounds a question with BM25~\cite{bm25} over each node's description, actors, places and
 incoming quotations, and asks which story is meant when two connected stories match almost equally.
+Word overlap alone would answer a question about a place or year the graph never mentions with the
+story that shares its other words, so a story is eligible only if it contains every capitalised name
+and figure in the question; when none does, the answer names what is missing and offers the closest
+story instead of answering it.
 Chains of up to three links ending at the grounded nodes are ranked by link strength $s_e$, an
 evidence weight $w_q$ (1.0 for explicit, 0.7 for implicit), a bonus for each additional outlet
 $o_e$, and their match to the question. Every sentence of an answer is filled from one edge record,
