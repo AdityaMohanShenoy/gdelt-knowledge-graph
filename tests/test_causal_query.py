@@ -136,3 +136,20 @@ def test_featured_snapshot_matches_published_graph():
     assert snap["graph_version"] == published
     assert len(snap["questions"]) == 4
     assert all(q["answer"]["status"] == "ok" and q["answer"]["paths"] for q in snap["questions"])
+
+
+def test_journey_snapshot_is_grounded():
+    import hashlib
+    import json
+    snap = json.loads((ROOT / "frontend" / "demo-journey.json").read_text())
+    raw = (ROOT / "out" / "causal_graph.json").read_bytes()
+    assert snap["graph_version"] == hashlib.sha256(raw).hexdigest()
+    article = snap["article"]
+    for span in article["spans"]:
+        assert article["text"][span["start"]:span["start"] + len(span["text"])] == span["text"]
+    published = json.loads(raw)
+    assert len(snap["graph"]["nodes"]) == len(published["nodes"])
+    assert len(snap["graph"]["edges"]) == len(published["edges"])
+    edge_ids = {e["id"] for e in published["edges"]}
+    assert len(snap["story"]["causes"]) == 3
+    assert all(c["edge_id"] in edge_ids for c in snap["story"]["causes"])
