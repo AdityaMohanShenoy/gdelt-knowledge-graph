@@ -90,6 +90,8 @@ kbd { font: 600 13px var(--body); border: 1px solid var(--line); border-radius: 
 .s-article { position: absolute; left: 6%; right: 6%; top: 6%; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px 26px; }
 .s-host { color: var(--muted); font-size: 14px; margin: 0; }
 .s-title { font: 700 21px/1.25 var(--display); margin: 6px 0 12px; }
+.s-title a { color: var(--text); text-decoration-color: var(--amber); text-underline-offset: 3px; }
+.s-host a, .s-cap a { color: var(--amber); }
 .s-article .para { font-size: 16px; line-height: 1.6; margin: 0 0 10px; color: #cfd8e3; }
 .s-text { font-size: clamp(17px, 1.6vw, 21px); line-height: 1.8; margin: 0; }
 .r-actor { --c: #f2b33d; --a: rgba(242, 179, 61, .22); }
@@ -597,7 +599,7 @@ function drawGdelt() {
     countTo(r.querySelector(".num"), v, { delay: i * 500, duration: 900 });
   });
   const box = put(scene, "div", "s-records");
-  A(put(box, "p", "s-cap", `${g.records.length} records citing one article: <b>indiapost.com</b>, ${day(g.records[0].day)}`), rise, { delay: 1700, duration: 400 });
+  A(put(box, "p", "s-cap", `${g.records.length} records citing one article: <b>${articleLink("indiapost.com")}</b>, ${day(g.records[0].day)}`), rise, { delay: 1700, duration: 400 });
   const tb = put(put(box, "table", "s-table", "<thead><tr><th>Event ID</th><th>Code</th><th>Actor 1</th><th>Actor 2</th><th class=\"why\">Why?</th></tr></thead>"), "tbody");
   g.records.forEach((r, i) => {
     const tr = put(tb, "tr", "", `<td>${esc(r.id)}</td><td>${esc(r.code)} <small>${esc(r.code_name)}</small></td><td>${esc(r.actor1)}</td><td>${esc(r.actor2)}</td><td class="why">?</td>`);
@@ -609,10 +611,13 @@ function drawGdelt() {
   });
 }
 
+/* The story's article, linked so the audience can open the real page. */
+const articleLink = text => `<a href="${esc(J.article.url)}" target="_blank" rel="noopener">${text}</a>`;
+
 function articleCard(paras) {
   const a = J.article, card = put(scene, "div", "s-article");
-  put(card, "p", "s-host", `${esc(a.host)}, ${day(J.gdelt.records[0].day)}`);
-  put(card, "p", "s-title", esc(a.title));
+  put(card, "p", "s-host", `${articleLink(esc(a.host))}, ${day(J.gdelt.records[0].day)}`);
+  put(card, "p", "s-title", articleLink(esc(a.title)));
   a.text.split("\n\n").slice(0, paras).forEach(p => put(card, "p", "para", esc(p)));
   return card;
 }
@@ -645,7 +650,7 @@ function marked(text, spans) {
 function drawExtract() {
   const a = J.article, first = a.text.split("\n\n")[0];
   const card = put(scene, "div", "s-article");
-  put(card, "p", "s-host", `${esc(a.host)}, ${day(J.gdelt.records[0].day)}`);
+  put(card, "p", "s-host", `${articleLink(esc(a.host))}, ${day(J.gdelt.records[0].day)}`);
   const p = put(card, "p", "s-text", marked(first, a.spans));
   put(card, "p", "s-legend", ["actor:who", "action:did what", "target:to whom", "place:where", "time:when"].map(x => `<span class="r-${x.split(":")[0]}">${x.split(":")[1]}</span>`).join(""));
   p.querySelectorAll("mark").forEach((m, i) => A(m, [

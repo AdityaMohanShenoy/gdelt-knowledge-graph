@@ -148,3 +148,10 @@ def test_demo_shows_matched_words_and_the_2024_limit():
     source = DEMO_PATH.read_text()
     assert "d.matched" in source and "Matched your words" in source
     assert "d.outside_2024" in source and "covers 2024 only" in source
+
+
+def test_demo_journey_links_the_real_article():
+    source = DEMO_PATH.read_text()
+    # steps 1-3 name the India Post article; each mention opens it in a new tab
+    assert source.count("articleLink(") >= 4
+    assert 'target="_blank" rel="noopener"' in source
