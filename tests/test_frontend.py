@@ -142,3 +142,9 @@ def test_demo_says_what_a_question_names_that_the_graph_lacks():
     assert "d.missing" in source and "d.closest" in source
     assert "Show the closest story" in source
     assert "ask(q, d.closest.cluster)" in source
+
+
+def test_demo_shows_matched_words_and_the_2024_limit():
+    source = DEMO_PATH.read_text()
+    assert "d.matched" in source and "Matched your words" in source
+    assert "d.outside_2024" in source and "covers 2024 only" in source

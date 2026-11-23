@@ -37,18 +37,59 @@ def tokens(text: str) -> list[str]:
 
 MONTHS = frozenset("january february march april may june july august september october "
                    "november december".split())
+# Words that look like names but pin nothing down here: the whole graph is about India.
+NOT_NAMES = MONTHS | {"india", "indian"}
+# Places checked whatever their case or position in the question: Indian states and union
+# territories, major cities, and other countries. Capitalised words are checked anyway;
+# this list catches "kerala" typed in lower case, or "Kerala" as the first word.
+PLACES = frozenset("""
+    assam bihar chhattisgarh goa gujarat haryana jharkhand karnataka kerala maharashtra manipur
+    meghalaya mizoram nagaland odisha orissa punjab rajasthan sikkim telangana tripura uttarakhand
+    delhi jammu kashmir ladakh puducherry pondicherry chandigarh lakshadweep
+    mumbai kolkata chennai bengaluru bangalore hyderabad ahmedabad pune jaipur lucknow patna bhopal
+    ranchi guwahati imphal srinagar shimla dehradun kochi thiruvananthapuram amritsar ludhiana noida
+    gurugram gurgaon nagpur indore surat varanasi kanpur agra raipur bhubaneswar
+    pakistan china bangladesh nepal bhutan myanmar afghanistan iran iraq israel palestine russia
+    ukraine america usa canada mexico brazil britain england france germany italy spain japan
+    australia africa europe""".split())
+PLACE_PAIRS = frozenset(tuple(p.split()) for p in (
+    "andhra pradesh", "arunachal pradesh", "himachal pradesh", "madhya pradesh", "uttar pradesh",
+    "tamil nadu", "west bengal", "new delhi", "sri lanka", "united states", "united kingdom"))
 
 
 def names(question: str) -> list[tuple[str, str]]:
-    """The names and figures a question pins down: capitalised words after the first, and
-    numbers. A story that lacks one of them is not what was asked about, however many other
-    words it shares. Month names are left out: the graph stores dates as dates, not words.
+    """The names, places and figures a question pins down: capitalised words after the first,
+    known places in any case or position, and numbers. A story that lacks one of them is not
+    what was asked about, however many other words it shares. Months and India are left out.
     Returns (word as asked, index token) pairs, in question order."""
+    words = re.findall(r"[A-Za-z0-9]+", question or "")
+    low = [w.lower() for w in words]
     out: list[tuple[str, str]] = []
-    for i, word in enumerate(re.findall(r"[A-Za-z0-9]+", question or "")):
-        if word.isdigit() or (i > 0 and word[0].isupper() and word.lower() not in MONTHS):
-            out += [(word, t) for t in tokens(word) if (word, t) not in out]
+    i = 0
+    while i < len(words):
+        if i + 1 < len(words) and (low[i], low[i + 1]) in PLACE_PAIRS:
+            phrase = f"{words[i]} {words[i + 1]}"
+            out += [(phrase, t) for t in tokens(phrase) if (phrase, t) not in out]
+            i += 2
+            continue
+        w = words[i]
+        if low[i] not in NOT_NAMES and (w.isdigit() or low[i] in PLACES or (i > 0 and w[0].isupper())):
+            out += [(w, t) for t in tokens(w) if (w, t) not in out]
+        i += 1
     return out
+
+
+def years_outside(question: str) -> list[str]:
+    """Four-digit years other than 2024: the graph covers 2024 only."""
+    return list(dict.fromkeys(y for y in re.findall(r"\b(1[89]\d\d|20\d\d)\b", question or "")
+                              if y != "2024"))
+
+
+def matched_words(graph: "Graph", question: str, cluster: int) -> list[str]:
+    """The question's words, as asked, that the chosen story contains."""
+    vocab = graph.vocabulary(cluster)
+    return list(dict.fromkeys(w for w in re.findall(r"[A-Za-z0-9]+", question or "")
+                              if any(t in vocab for t in tokens(w))))
 
 
 def without_unchecked_implied(data: dict) -> dict:
@@ -174,6 +215,12 @@ def ground(graph: Graph, question: str, cluster: int | None = None) -> dict:
     # When no matching story has them all, say what is missing and offer the closest
     # story rather than answer it as if it were asked. Choosing a cluster skips this.
     need = names(question) if cluster is None else []
+    outside = years_outside(question) if cluster is None else []
+    if outside:
+        vocab = graph.vocabulary(ranked[0])
+        missing = list(dict.fromkeys(outside + [w for w, t in need if t not in vocab and w not in outside]))
+        return {"status": "no_match", "query_terms": sorted(set(tokens(question))), "missing": missing,
+                "outside_2024": outside, "closest": cluster_card(graph, ranked[0], scores)}
     if need:
         fits = [c for c in ranked if all(t in graph.vocabulary(c) for _, t in need)]
         if not fits:
@@ -193,7 +240,8 @@ def ground(graph: Graph, question: str, cluster: int | None = None) -> dict:
     targets = sorted((n for n, s in scores.items()
                       if graph.component[n] == chosen and s >= 0.5 * top),
                      key=lambda n: (-scores[n], n))
-    return {"status": "ok", "cluster": chosen, "targets": targets, "scores": scores}
+    return {"status": "ok", "cluster": chosen, "targets": targets, "scores": scores,
+            "matched": matched_words(graph, question, chosen)}
 
 
 def cluster_card(graph: Graph, cluster: int, scores: dict) -> dict:
@@ -327,6 +375,7 @@ def explain(graph: Graph, question: str, cluster: int | None = None, k: int = 5,
         "question": question,
         "graph_version": graph.version,
         "cluster": grounding["cluster"],
+        "matched": grounding.get("matched", []),
         "targets": [node_card(graph, t, scores) for t in targets],
         "paths": [{"score": path_score(p, scores, top),
                    "nodes": [node_card(graph, n, scores)
