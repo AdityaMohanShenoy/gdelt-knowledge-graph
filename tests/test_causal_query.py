@@ -152,4 +152,6 @@ def test_journey_snapshot_is_grounded():
     assert len(snap["graph"]["edges"]) == len(published["edges"])
     edge_ids = {e["id"] for e in published["edges"]}
     assert len(snap["story"]["causes"]) == 3
+    march = next(n for n in published["nodes"] if n["id"] == snap["story"]["event"])
+    assert snap["story"]["records"] == len(march["merged_from"]) + 1  # the survivor counts too
     assert all(c["edge_id"] in edge_ids for c in snap["story"]["causes"])

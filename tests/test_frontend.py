@@ -122,3 +122,15 @@ def test_demo_back_retraces_the_walk():
     # Back re-asks the previous step in its own direction without re-recording it
     assert "if (prev.dir !== direction) setDirection(prev.dir);" in source
     assert "ask(prev.q, prev.cluster, prev.node, true)" in source
+
+
+def test_demo_journey_review_fixes():
+    source = DEMO_PATH.read_text()
+    # a 404 or bad journey file is a failed load, not data
+    assert "r.ok ? r.json()" in source and "Loading the walkthrough" in source
+    # the march's date is not hardcoded (it marched on 13 Feb; 12 Feb is when it was announced)
+    assert "12 Feb 2024" not in source
+    # leaving step 10 cancels its pending handoff, so the query runs once
+    assert "function toAsk() {\n  stopAll();" in source
+    # a mouse click on Back or a step button does not capture later Space presses
+    assert "currentTarget.blur()" in source

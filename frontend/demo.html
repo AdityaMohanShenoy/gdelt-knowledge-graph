@@ -522,7 +522,7 @@ const STAGES = [
   { title: "Now ask it why", lede: "The end goal: anyone can question the graph and get an answer they can trace back to the news." },
 ];
 const ASK_Q = "Why were farmers protesting at the Punjab-Haryana border in February 2024?";
-let J = null, stage = 0, played = false, running = [], timers = [], sims = [], instant = false, countGen = 0;
+let jState = "loading", J = null, stage = 0, played = false, running = [], timers = [], sims = [], instant = false, countGen = 0;
 
 function A(el, frames, o = {}) {
   const opts = { duration: 600, delay: 0, fill: "both", easing: "cubic-bezier(.2,.7,.2,1)", ...o };
@@ -652,7 +652,7 @@ function drawExtract() {
 
 /* 4. Merge: seven records of the march collapse into one event */
 function drawMerge() {
-  const W = scene.clientWidth, H = scene.clientHeight, cx = W / 2, cy = H * .46, n = J.story.merged_records;
+  const W = scene.clientWidth, H = scene.clientHeight, cx = W / 2, cy = H * .46, n = J.story.records;
   const R = Math.min(W * .34, H * .36);
   for (let k = 0; k < n; k++) {
     const t = -Math.PI / 2 + k * 2 * Math.PI / n, x = cx + R * Math.cos(t) * 1.25, y = cy + R * Math.sin(t);
@@ -661,7 +661,7 @@ function drawMerge() {
     A(c, [{ transform: "translate(-50%, -50%) scale(1)", opacity: 1 }, { transform: `translate(calc(-50% + ${cx - x}px), calc(-50% + ${cy - y}px)) scale(.5)`, opacity: 0 }],
       { delay: 1500 + k * 70, duration: 700, fill: "forwards", easing: "cubic-bezier(.6,0,.4,1)" });
   }
-  const node = put(scene, "div", "s-node big", `<b>${esc(J.story.label)}</b><small>one event from ${n} records, ${J.story.date.slice(8)} Feb 2024</small>`, { left: cx + "px", top: cy + "px" });
+  const node = put(scene, "div", "s-node big", `<b>${esc(J.story.label)}</b><small>one event from ${n} records</small>`, { left: cx + "px", top: cy + "px" });
   A(node, pop, { delay: 2050, duration: 600 });
   A(node, [{ boxShadow: "0 0 0 0 rgba(61,214,163,.6)" }, { boxShadow: "0 0 0 26px rgba(61,214,163,0)" }], { delay: 2500, duration: 1100, iterations: 2, fill: "none" });
   A(put(scene, "p", "s-note", `${n} records of the same march become one event. Merging never joins two events a person has linked as cause and effect.`), rise, { delay: 2600, duration: 500 });
@@ -695,7 +695,7 @@ function drawLink() {
     dots.push(d);
   }
   const tx = W * .82, ty = H / 2;
-  const node = put(scene, "div", "s-node", `<b>${esc(J.story.label)}</b><small>12 Feb 2024</small>`, { left: tx + "px", top: ty + "px", maxWidth: (W * .3) + "px" });
+  const node = put(scene, "div", "s-node", `<b>${esc(J.story.label)}</b><small>one event, ${J.story.records} records</small>`, { left: tx + "px", top: ty + "px", maxWidth: (W * .3) + "px" });
   A(node, pop, { delay: 200, duration: 500 });
   dots.forEach(d => A(d, [{ opacity: .9 }, { opacity: .12 }], { delay: 1100, duration: 700, fill: "forwards" }));
   const svg = svgIn(scene), cw = W * .44;
@@ -835,6 +835,7 @@ function drawAsk(handOff) {
   if (handOff) later(300 + ASK_Q.length * 28 + 700, toAsk);
 }
 function toAsk() {
+  stopAll();
   $("ask").scrollIntoView({ behavior: reduce ? "auto" : "smooth" });
   setTimeout(() => document.querySelector("#chips button").click(), reduce ? 0 : 650);
 }
@@ -859,7 +860,7 @@ function show(n, still = false) {
   const num = $("jnum"), lab = $("jlab"), sub = $("jsub");
   if (!J) {
     num.textContent = ""; lab.textContent = ""; sub.textContent = "";
-    put(scene, "p", "s-note", "The walkthrough data did not load. Reload the page, or go straight to Ask it why below.");
+    put(scene, "p", "s-note", jState === "failed" ? "The walkthrough data did not load. Reload the page, or go straight to Ask it why below." : "Loading the walkthrough…");
     return;
   }
   const c = COUNTS[n - 1]();
@@ -875,12 +876,14 @@ function enterJourney() {
   setTimeout(() => show(played ? stage : 1), reduce ? 0 : 450);
 }
 $("jnext").addEventListener("click", () => played ? next() : show(stage || 1));
-$("jprev").addEventListener("click", prev);
-document.querySelectorAll(".rail button").forEach(b => b.addEventListener("click", () => show(+b.dataset.stage, true)));
+$("jprev").addEventListener("click", e => { e.currentTarget.blur(); prev(); });
+document.querySelectorAll(".rail button").forEach(b => b.addEventListener("click", e => { e.currentTarget.blur(); show(+b.dataset.stage, true); }));
 let resizeT;
 addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => stage && show(stage, true), 250); });
-fetch("/static/demo-journey.json").then(r => r.json()).then(d => { J = d; show(1, true); played = false; })
-  .catch(() => show(1, true));
+fetch("/static/demo-journey.json").then(r => r.ok ? r.json() : Promise.reject(r.status)).then(d => {
+  if (!d || !d.gdelt || !d.measured || !d.graph || !d.story) throw new Error("bad journey data");
+  J = d; jState = "ok"; show(stage || 1, true);
+}).catch(() => { jState = "failed"; show(stage || 1, true); });
 
 /* Presenter keys: → / Space / PageDown next step, ← / PageUp back, R replays, 1-3 jump, / focuses the question. */
 const SECTIONS = ["hero", "journey", "ask"];

@@ -143,8 +143,9 @@ def story_block(graph: Graph) -> dict:
                        "cause": label(graph.nodes[e["source"]]), "quote": e["evidence"][0]["text"],
                        "host": re.sub(r"^www\.", "", url.split("/")[2]),
                        "outlets": e["corroboration_count"]})
-    return {"event": STORY_EVENT, "label": label(node), "date": node["date"][:10],
-            "merged_records": len(node.get("merged_from") or []), "causes": causes}
+    # merged_from lists the records folded into this node; the surviving record makes one more.
+    return {"event": STORY_EVENT, "label": label(node),
+            "records": len(node.get("merged_from") or []) + 1, "causes": causes}
 
 
 def graph_block(graph: Graph) -> dict:
