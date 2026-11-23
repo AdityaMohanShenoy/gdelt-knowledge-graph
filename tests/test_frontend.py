@@ -50,13 +50,18 @@ def test_inline_javascript_parses():
 DEMO_PATH = ROOT / "frontend" / "demo.html"
 
 
-def test_demo_tells_the_story_with_measured_figures():
+def test_demo_journey_is_key_driven():
     source = DEMO_PATH.read_text()
-    for section in ("hero", "problem", "how", "graph", "trust", "ask"):
+    for section in ("hero", "journey", "ask"):
         assert f'id="{section}"' in source
-    assert 'fetch("/api/explain/stats' in source
-    for figure in ("3.8", "4.0", "20,129", "69 / 69", "1.18", "0.07"):
-        assert figure in source, figure
+    for gone in ("problem", "how", "trust"):
+        assert f'id="{gone}"' not in source
+    assert 'fetch("/static/demo-journey.json")' in source
+    assert source.count("data-stage=") == 10
+    for key in ('"ArrowRight"', '"ArrowLeft"', '"PageDown"', '"PageUp"'):
+        assert key in source, key
+    assert "prefers-reduced-motion" in source
+    assert "scale_2000.md" in source
 
 
 def test_demo_query_handles_every_answer_and_works_offline():
@@ -66,15 +71,11 @@ def test_demo_query_handles_every_answer_and_works_offline():
     assert "implied=true" in source
     assert '<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"' in source
     assert "saved answer" in source
-    assert 'e.key === "/"' in source and '"123456".includes(e.key)' in source
+    assert 'e.key === "/"' in source and '"123".includes(e.key)' in source
 
 
 def test_demo_review_fixes():
     source = DEMO_PATH.read_text()
-    # sources named for every fixed figure
-    assert "branching.md" in source and "paper/iccids2027.tex" in source
-    # the GDELT baseline compares candidates, not confirmed causal pairs
-    assert "Real cause-and-effect pairs" not in source
     # implied links: the default view's hidden count is shown, and the claim stays honest
     assert "hidden_implied" in source
     assert "hidden until a person checks them" not in source
@@ -121,3 +122,15 @@ def test_demo_back_retraces_the_walk():
     # Back re-asks the previous step in its own direction without re-recording it
     assert "if (prev.dir !== direction) setDirection(prev.dir);" in source
     assert "ask(prev.q, prev.cluster, prev.node, true)" in source
+
+
+def test_demo_journey_review_fixes():
+    source = DEMO_PATH.read_text()
+    # a 404 or bad journey file is a failed load, not data
+    assert "r.ok ? r.json()" in source and "Loading the walkthrough" in source
+    # the march's date is not hardcoded (it marched on 13 Feb; 12 Feb is when it was announced)
+    assert "12 Feb 2024" not in source
+    # leaving step 10 cancels its pending handoff, so the query runs once
+    assert "function toAsk() {\n  stopAll();" in source
+    # a mouse click on Back or a step button does not capture later Space presses
+    assert "currentTarget.blur()" in source
