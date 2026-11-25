@@ -2,7 +2,7 @@
 
 Nov 23, 2026
 
-Every number on the Review 3 slides, in slide order: what it counts, where it comes from, and one line you can say out loud. All figures come from the paper (paper/iccids2027.tex) and docs/measurements/.
+Every number on the Review 3 slides, in slide order: what it counts, where it comes from, and one line you can say out loud. All figures come from the ICCIDS draft of the paper (since replaced by paper/main.tex) and docs/measurements/.
 
 ## The four headline numbers (slides 1–3)
 
